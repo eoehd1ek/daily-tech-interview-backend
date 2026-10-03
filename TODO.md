@@ -12,6 +12,8 @@
 - Flyway 파일명에는 항상 세 버전 요소를 명시한다: `V<major>.<minor>.<patch>__<description>.sql`. 스키마는 `V1.0.0`, 같은 주 버전의 초기 데이터는 `V1.0.1`로 작성한다. 이미 적용된 DB 이력을 자동 수정하지 않는다.
 - 테스트는 JUnit 5와 AssertJ의 `assertThat(actual).isEqualTo(expected)` 등 fluent assertion을 사용한다. 실제 DB Repository 테스트는 기존 Testcontainers JDBC 설정과 `@DataJpaTest`를 활용한다. 테스트 설정 파일에서 `test` 프로필을 활성화하므로 `@ActiveProfiles`와 불필요한 DB/Flyway 자동 설정 어노테이션을 추가하지 않는다.
 - 테스트 메서드 이름은 검증할 동작과 기대 결과가 드러나는 한글 문장으로 작성한다. 모든 테스트 메서드에 `// given`, `// when`, `// then`을 순서대로 포함하여 데이터 준비, 검증 대상 호출, AssertJ 결과 검증을 구분한다.
+- Mockito mock 설정은 `org.mockito.BDDMockito.given`과 `willReturn`을 사용하여 `// given` 절에 작성한다. `Mockito.when`과 `thenReturn`은 사용하지 않는다.
+- Service는 `@ExtendWith(MockitoExtension::class)`와 mock Repository로 단위 테스트한다. Controller는 `@WebMvcTest`와 MockMvc, mock Service로 요청 매핑/상태/JSON 계약을 검증한다. 실제 네트워크 서버나 불필요한 전체 통합 테스트는 추가하지 않는다. Repository의 실제 DB 테스트와 각 계층의 책임을 분리한다.
 - Repository 기능 테스트는 각 메서드에서 Entity를 직접 생성하고 `save` 또는 `saveAll`로 저장한 뒤, 생성된 ID로 검증 대상 메서드를 호출한다. 저장용 Entity와 조회 결과는 필드 값 또는 AssertJ `usingRecursiveComparison`으로 비교한다. 기본 트랜잭션 롤백으로 테스트를 격리하고 다른 테스트의 데이터/실행 순서나 Flyway 초기 데이터 값/고정 ID/전체 개수에 의존하지 않는다.
 - Repository 기능 테스트는 필요한 Repository만 주입한다. EntityManager, TestEntityManager, Flyway, JdbcTemplate, SessionFactory 등 인프라 객체와 명시적 `flush`, `clear`, `saveAndFlush`는 사용하지 않는다. 같은 영속성 컨텍스트 내 비교이므로 별도 DB 재로딩/commit 검증으로 설명하지 않는다.
 - 검증 대상은 실제 저장/조회 결과, 필터링, 정렬, 빈 결과 등 기능 동작이다. Flyway 버전/파일명, 초기 데이터, 시스템 카탈로그의 제약/인덱스, SQL 횟수 검증과 Hibernate 통계 설정은 추가하지 않는다. 향후 사용자 요청 없이 이러한 인프라 검증을 다시 추가하지 않는다.
@@ -23,7 +25,7 @@
 - 인증/인가, Redis, 캐싱, RAG, Embedding, Vector Store, 메시지 큐, Microservice, 불필요한 성능 최적화는 추가하지 않는다.
 - 프론트엔드 화면 구현은 별도 저장소의 작업이다. 여기에는 백엔드 구현과 연결 검증에 필요한 항목만 둔다.
 
-현재 Question/EvaluationCriterion 모델, Repository, 스키마/초기 데이터 마이그레이션과 PostgreSQL 테스트가 구현되어 있다. API는 아직 구현하지 않았다. 기존 Flyway 의존성을 사용해 스키마를 관리하며, 테스트에서는 `validate`로 마이그레이션과 Entity 매핑의 일치를 확인한다.
+현재 Question/EvaluationCriterion 모델, Repository, 스키마/초기 데이터 마이그레이션과 PostgreSQL 테스트가 구현되어 있다. 질문 목록 API와 Service/Controller 계층별 테스트도 구현되어 있으며 나머지 API는 아직 구현하지 않았다. 기존 Flyway 의존성을 사용해 스키마를 관리하며, 테스트에서는 `validate`로 마이그레이션과 Entity 매핑의 일치를 확인한다.
 
 ## 1. Question 및 평가 기준 모델
 
@@ -44,11 +46,13 @@
 
 ## 2. 질문 목록 조회
 
-- [ ] `GET /api/questions` Controller / Service와 목록 Response DTO 구현.
-- [ ] 전체 목록에 `id`, `title`만 반환하고 데이터가 없으면 `[]` 반환.
-- [ ] 평가 기준/본문 비노출, 성공 응답 타입, 빈 목록 테스트.
+- [x] `GET /api/questions` Controller / Service와 목록 Response DTO 구현.
+- [x] 전체 목록에 `id`, `title`만 반환하고 데이터가 없으면 `[]` 반환.
+- [x] 평가 기준/본문 비노출, 성공 응답 타입, 빈 목록 테스트. Service는 MockitoExtension 단위 테스트, Controller는 mock Service와 MockMvc로 검증.
 
-완료 기준: 준비한 PostgreSQL 질문 데이터가 `200 OK` JSON 배열로 조회된다. 가능한 경우 프론트엔드와 연결해 DB → Spring → HTTP → 화면까지의 첫 연결을 검증한다. 질문 목록의 페이지네이션이나 정렬 기능은 추가하지 않는다. 평가 기준의 `displayOrder` 정렬과는 별개다.
+완료 기준: Controller → Service → QuestionRepository 목록 조회 코드를 연결하고 계층별 테스트로 목록 변환, `200 OK` JSON 배열, `id`/`title`만 노출, 빈 배열 응답을 검증한다. 실제 네트워크/DB부터 API까지의 전체 연결과 프론트엔드 화면 연결은 별도 연결 검증으로 남긴다. 질문 목록의 페이지네이션이나 정렬 기능은 추가하지 않는다. 평가 기준의 `displayOrder` 정렬과는 별개다.
+
+검증 결과: `./gradlew clean build`가 통과했다(Windows에서는 `gradlew.bat` 실행). Service 단위 테스트 2개, MockMvc Controller 테스트 2개, 기존 Repository 테스트 4개와 context 테스트 1개로 총 9개가 통과했다. 목록 순서는 계약에서 보장하지 않으므로 테스트는 순서에 의존하지 않는다. Controller 테스트에서는 배열 타입과 각 항목의 정수 ID/문자열 제목 및 정확히 두 공개 필드만 존재함을 확인했다. 새 의존성, 마이그레이션, 평가 기준 조회는 추가하지 않았다. 실제 서버/프론트엔드 연결과 DB 조회 오류의 공통 `500 INTERNAL_SERVER_ERROR` 응답 형식은 이번 검증 범위가 아니며 공통 예외 처리는 8단계에서 구현한다.
 
 ## 3. 질문 상세 조회
 
