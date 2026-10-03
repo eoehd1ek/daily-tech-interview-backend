@@ -9,8 +9,6 @@ spring:
     password: ${POSTGRES_PASSWORD}
   jpa:
     open-in-view: false
-    hibernate:
-      ddl-auto: none
   ai:
     model:
       chat: openai

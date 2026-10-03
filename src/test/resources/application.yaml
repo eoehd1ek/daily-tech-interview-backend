@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: tech
+  profiles:
+    active: test
+  datasource:
+    url: jdbc:tc:postgresql:18.6-alpine:///tech_test?TC_DAEMON=true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  ai:
+    model:
+      chat: none
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none

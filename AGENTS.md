@@ -109,6 +109,20 @@ LLM 제공자는 OpenRouter를 사용한다.
 - API에는 Request / Response DTO를 사용한다.
 - Spring Data JPA를 기본 데이터 접근 방식으로 사용한다.
 - native query는 명확한 이유가 있는 경우에만 사용한다.
+- 일반 문자열 등 기본 타입은 Kotlin/JPA 기본 매핑을 사용하고 `@Column(columnDefinition = ...)`으로 DB 타입을 고정하지 않는다. `jsonb`처럼 기능상 특정 DB 타입이 꼭 필요한 경우에만 이유를 확인한 뒤 사용한다. 실제 컬럼 타입은 Flyway에서 관리한다.
+- Flyway 파일명은 항상 `V<major>.<minor>.<patch>__<description>.sql` 형식으로 세 버전 요소를 명시한다. 예: `V1.0.0__create_question_and_evaluation_criterion.sql`, `V1.0.1__seed_initial_questions.sql`. 이미 적용된 마이그레이션의 내용/이름을 임의로 변경하거나 운영 DB의 이력을 자동 수정하지 않는다.
+
+# Backend Tests
+
+- 테스트는 JUnit 5의 `@Test`와 AssertJ의 `assertThat(actual).isEqualTo(expected)` 등 fluent assertion으로 읽기 쉽게 작성한다. 값 비교에는 `kotlin.test.assertEquals`나 JUnit assertion 대신 AssertJ를 사용한다. 컬렉션은 `containsExactly`, `hasSize`, `isEmpty`, `allSatisfy` 등으로 의도를 드러낸다.
+- 테스트 메서드 이름은 Kotlin 백틱을 사용한 한글 문장으로 작성하고 검증할 동작과 기대 결과를 표현한다. 예: `질문 ID로 해당 질문의 평가 기준만 조회한다`.
+- 각 테스트 메서드는 `// given`, `// when`, `// then` 주석 절을 순서대로 포함한다. `given`에서는 입력과 필요한 데이터를 준비하고, `when`에서는 검증 대상 메서드를 호출하며, `then`에서는 기대 결과를 AssertJ로 검증한다.
+- Repository 테스트는 각 메서드의 `given`에서 필요한 Entity를 직접 생성하고 Repository의 `save` 또는 `saveAll`로 저장한다. `when`에서 검증 대상 Repository 메서드를 호출하고 `then`에서 저장용 Entity와 조회 Entity의 필드 값 또는 반환 목록을 비교한다. Entity의 참조 동일성에 의존하는 `isSameAs`나 기본 `equals` 비교 대신 필드 assertion 또는 AssertJ `usingRecursiveComparison`을 사용한다. 다른 테스트의 데이터나 실행 순서, Flyway 초기 데이터의 값/고정 ID/전체 개수에 의존하지 않는다. 생성된 ID로 자신의 데이터를 조회하고 기본 트랜잭션 롤백으로 격리한다.
+- Repository 테스트에는 검증에 필요한 Repository만 주입한다. EntityManager, TestEntityManager, Flyway, JdbcTemplate, SessionFactory 등 인프라 객체를 주입하거나 사용하지 않으며 명시적 `flush`, `clear`, `saveAndFlush`를 추가하지 않는다. 같은 영속성 컨텍스트에서 조회한 Entity는 캐시된 객체일 수 있으므로 이 테스트를 별도 DB 재로딩이나 commit 후 영속화 검증으로 설명하지 않는다.
+- Repository 테스트는 실제 사용하는 저장/조회 메서드의 반환 값, 질문별 필터링, 정렬, 빈 결과 등 기능 동작을 검증한다. Flyway 버전/파일명, 초기 데이터 내용, 시스템 카탈로그의 제약/인덱스, SQL 횟수 검증은 추가하지 않는다. 향후 인프라 검증이 필요하더라도 사용자 요청 없이 이러한 코드나 의존을 다시 추가하지 않는다.
+- 실제 PostgreSQL이 필요한 Repository 테스트는 기본적으로 `@DataJpaTest`만 사용한다. `src/test/resources/application.yaml`의 `jdbc:tc:postgresql:18.6-alpine` 설정으로 Testcontainers가 DB를 시작하며, 개발/운영 DB나 수동으로 띄운 DB에 연결하지 않는다. 실행 환경에는 Docker 호환 런타임이 필요하다.
+- 테스트 설정 파일이 `spring.profiles.active=test`를 선언하므로 테스트 코드에 `@ActiveProfiles`를 추가하지 않는다. 현재 구성에서는 DB 대체 방지와 Flyway를 위한 `@AutoConfigureTestDatabase` 및 `@ImportAutoConfiguration(FlywayAutoConfiguration::class)`도 추가하지 않는다.
+- JPA 테스트 쓰기는 기본 트랜잭션 롤백을 유지한다. Flyway 마이그레이션과 초기 데이터는 테스트 환경의 자동 설정으로 적용하고 `ddl-auto: validate`로 Entity 매핑을 확인한다. 테스트 코드에서 이를 직접 제어하거나 검증하지 않는다. Hibernate 통계 수집과 `generate_statistics` 설정은 추가하지 않는다.
 
 # AI Evaluation
 

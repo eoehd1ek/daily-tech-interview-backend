@@ -49,7 +49,7 @@
 | 404 | QUESTION_NOT_FOUND | 질문이 존재하지 않음 |
 | 404 | EVALUATION_ATTEMPT_NOT_FOUND | 평가 기록이 존재하지 않음 |
 | 502 | LLM_EVALUATION_FAILED | LLM 호출 또는 응답 검증이 모든 재시도 후에도 실패 |
-| 500 | INTERNAL_SERVER_ERROR | 서버 내부 오류, DB 저장 실패, 잘못된 서버 평가 기준 설정 |
+| 500 | INTERNAL_SERVER_ERROR | 서버 내부 오류, DB 조회/저장 실패 |
 
 ## 3. API 목록
 
@@ -119,7 +119,7 @@ Request Body: 없음.
 | title | string | 질문 제목 |
 | content | string | 사용자에게 보여줄 질문 본문 |
 
-평가 항목 ID, 평가 기준 설명, 항목별 최대 배점은 반환하지 않는다.
+평가 항목 ID, 평가 기준 설명, 항목별 최대 배점, 평가 기준의 `displayOrder`는 반환하지 않는다.
 
 주요 오류: `400 INVALID_REQUEST`, `404 QUESTION_NOT_FOUND`, `500 INTERNAL_SERVER_ERROR`.
 
@@ -155,9 +155,9 @@ Path Parameter: `questionId: number`, 평가할 질문 ID.
 
 ### 처리 흐름
 
-1. 요청을 검증하고 질문과 해당 질문의 평가 기준을 DB에서 조회한다.
-2. 평가 기준의 최대 배점 합계가 100인지 확인한다.
-3. 질문, 기준, 답변을 Spring AI를 통해 OpenRouter에 전달한다.
+1. 요청을 검증하고 QuestionRepository로 질문을 조회한다.
+2. EvaluationCriterionRepository로 해당 `questionId`의 기준 목록을 `displayOrder` 오름차순으로 조회한다. 같은 순서 값에서는 ID 오름차순으로 조회한다.
+3. 저장된 기준은 정상이라고 가정하고 개수/양의 배점/배점 합계를 재검증하지 않은 채 질문, 기준, 답변을 Spring AI를 통해 OpenRouter에 전달한다.
 4. LLM이 반환한 항목별 점수와 피드백을 파싱하고 검증한다.
 5. 백엔드가 총점을 합산하고 FAIL/RETRY/PASS를 판정한다.
 6. 완료된 평가 기록을 DB에 저장한다.
@@ -258,15 +258,43 @@ Request Body: 없음.
 
 ### 최소 데이터 모델
 
-| 모델 | 최소 데이터 및 관계 |
+| 모델 | 최소 데이터 및 ID 참조 |
 | --- | --- |
 | Question | id, title, content |
-| EvaluationCriterion | id, questionId, content(자연어 평가 기준), maxScore |
+| EvaluationCriterion | id, questionId, content(자연어 평가 기준), maxScore, displayOrder |
 | EvaluationAttempt | id, questionId, answer, score, result, strengths, weaknesses, improvements, createdAt |
 
-Question은 여러 EvaluationCriterion과 여러 EvaluationAttempt를 가진다. User 관계와 `displayOrder` 필드는 추가하지 않는다. 평가 항목의 순서에 의존하지 않고 `criterionId`로 점수를 대응시킨다. 항목별 평가 결과를 별도로 영속화하는 것은 현재 필수 요구사항이 아니다.
+Question 하나에 1개 이상의 EvaluationCriterion과 여러 EvaluationAttempt가 ID로 연결된다. User 관계는 추가하지 않는다. `EvaluationCriterion.displayOrder`는 정수 필드이며 평가 기준 조회/프롬프트 나열 순서에 사용한다. 오름차순으로 조회하고 같은 값에서는 ID 오름차순으로 조회한다. 질문 목록의 정렬이나 공개 응답 필드에는 영향을 주지 않는다. 점수는 여전히 순서가 아닌 `criterionId`로 대응시킨다. 항목별 평가 결과를 별도로 영속화하는 것은 현재 필수 요구사항이 아니다.
 
-각 질문에는 여러 평가 기준이 필요하다. `maxScore`는 양의 정수이고 질문별 합계는 정확히 100이어야 한다. 기준이 없거나 배점 합계가 잘못된 서버 데이터는 LLM에 전달하지 않고 `500 INTERNAL_SERVER_ERROR`로 처리한다.
+### 영속화 및 조회 정책
+
+- Entity 간 연관관계 매핑은 사용하지 않는다. `@ManyToOne`, `@OneToMany` 등 대신 `EvaluationCriterion.questionId`와 `EvaluationAttempt.questionId`를 `Long` 필드로 저장한다.
+- 관련 데이터가 필요하면 해당 모델의 Repository를 별도로 호출한다. 질문과 평가 기준은 질문 조회 1회와 기준 목록 조회 1회로 가져오며, 평가 기록의 질문 정보도 저장된 `questionId`로 QuestionRepository에서 조회한다. 불필요한 기준 조회는 질문 목록/상세 API에 추가하지 않는다.
+- 추후 성능 개선이 필요한 경우 명시적 조인 쿼리와 DTO 매핑을 검토하며, 이를 위해 Entity 간 연관관계 매핑을 도입하지 않는다.
+- 프로젝트의 DB 스키마에는 외래 키 제약 조건, `ON DELETE CASCADE`, 배점 등 도메인 규칙을 강제하는 `CHECK` 및 트리거를 사용하지 않는다. PK, 필수 컬럼의 `NOT NULL`, `question_id` 조회 인덱스는 사용한다. 참조 정합성은 데이터 입력 및 애플리케이션의 생성/변경 흐름에서 관리한다.
+- 일반 문자열 등 기본 타입은 Kotlin/JPA 기본 매핑을 사용한다. `columnDefinition`은 `jsonb`처럼 특정 DB 타입이 기능상 꼭 필요한 경우에만 사용하며 일반 문자열에는 지정하지 않는다. DB 컬럼 타입은 Flyway 마이그레이션에서 관리한다.
+- Flyway 파일명은 `V<major>.<minor>.<patch>__<description>.sql` 형식으로 항상 세 버전 요소를 명시한다. 이미 적용된 마이그레이션의 변경이나 DB 이력 수정은 별도 확인 없이 수행하지 않는다.
+
+### 평가 기준 작성 및 검증 정책
+
+각 질문에는 평가 기준이 1개 이상 필요하다. `maxScore`는 양의 정수이고 질문별 합계는 정확히 100이어야 한다. 검증은 향후 관리자 페이지에서 질문을 생성하는 애플리케이션 처리에서만 수행한다. 관리자 페이지/API와 해당 검증 코드는 현재 MVP 작업 범위에 포함하지 않는다.
+
+저장된 질문/평가 기준은 정상이라고 가정한다. 질문 조회와 LLM 호출 전에는 기준 개수, 양의 배점, 배점 합계를 재검증하지 않으며, 잘못된 기준을 사전에 탐지하여 `500`으로 변환하는 흐름도 구현하지 않는다. Entity 생성자나 영속화 콜백에도 이 검증을 넣지 않는다. 개발자가 직접 DB에 입력하거나 Flyway로 초기 데이터를 입력할 때에는 작성자가 같은 규칙 및 참조 정합성을 지킨다. 이 정책은 저장 기준에 대한 것이며, 외부 입력인 사용자 요청과 LLM 응답 검증은 유지한다.
+
+### 확정된 초기 데이터
+
+Core Flow 연결 검증용 데이터는 스키마 마이그레이션 `V1.0.0__create_question_and_evaluation_criterion.sql`과 분리하되 같은 주 버전의 Flyway 초기 데이터 마이그레이션 `V1.0.1__seed_initial_questions.sql`로 입력한다. 관리자 API나 별도 입력 스크립트는 추가하지 않는다.
+
+- 질문 제목: `자기 소개`
+- 질문 본문: `인사 후, 자신의 이름, 성별을 소개해주세요.`
+
+| 평가 기준 content | maxScore | displayOrder |
+| --- | --- | --- |
+| 인사 | 50 | 1 |
+| 본인 이름 | 30 | 2 |
+| 본인 성별 | 20 | 3 |
+
+기준의 `questionId`는 초기 질문의 실제 ID를 참조하고 초기 데이터의 배점 합계는 100이다. Repository 기능 테스트는 이 초기 데이터에 의존하지 않고 각 테스트에서 직접 Entity를 생성/저장한 뒤 조회 결과를 비교한다. 마이그레이션 이력/초기 데이터의 별도 assertion은 작성하지 않는다. 이 질문은 개발 연결 검증용이며 답변에는 가상의 이름/성별을 사용하고 실제 개인정보 입력을 유도하지 않는다. 문서의 기술 질문 API/LLM 예시는 계약 설명용이며 별도의 초기 데이터가 아니다.
 
 ### LLM 응답 예시
 
@@ -297,7 +325,7 @@ Question은 여러 EvaluationCriterion과 여러 EvaluationAttempt를 가진다.
 
 위 예시의 항목별 최대 배점은 각각 30, 30, 40이고 합산 점수는 82다. `criterionId`는 실제 DB에서 조회해 전달한 ID여야 한다. 각 항목의 `feedback`은 내부 검증에 사용하고, 공개 결과에는 세 종류의 종합 피드백 문자열만 반환한다.
 
-### 검증과 판정
+### LLM 응답 검증과 판정
 
 1. 응답이 기대한 JSON 구조와 타입을 만족하는지 검증한다.
 2. 해당 질문의 모든 평가 항목이 정확히 한 번씩 존재해야 한다. 누락, 중복, 다른 질문의 ID, 알 수 없는 ID를 거부한다.
@@ -320,7 +348,7 @@ Question은 여러 EvaluationCriterion과 여러 EvaluationAttempt를 가진다.
 - 값 N은 최초 호출을 제외한 추가 재시도 횟수다. 예를 들어 N=2이면 최대 3회 호출한다. 이 예시는 기본값 확정을 의미하지 않는다.
 - 호출 오류, 타임아웃, JSON 파싱 실패, 점수/피드백 검증 실패는 유효한 평가를 얻지 못한 실패로 취급해 설정 범위 안에서 재시도한다.
 - 모든 시도가 실패하면 `502 LLM_EVALUATION_FAILED`를 반환한다. 검증 실패 결과를 저장하거나 임의 점수로 대체하지 않는다.
-- 잘못된 요청, 없는 질문, 서버 기준 데이터 오류, DB 저장 실패는 LLM 재시도 대상이 아니다. DB 저장 실패를 이유로 LLM을 다시 호출하지 않는다.
+- 잘못된 요청, 없는 질문, DB 조회/저장 실패는 LLM 재시도 대상이 아니다. DB 저장 실패를 이유로 LLM을 다시 호출하지 않는다. 저장 기준 오류를 탐지하는 별도 검증 흐름은 추가하지 않는다.
 - Spring AI/HTTP 클라이언트의 기존 재시도 설정을 확인해 중첩 재시도로 실제 호출 횟수가 계약을 초과하지 않도록 한다.
 - 개별 호출 및 전체 요청에 유한한 시간 제한을 둔다. 정확한 시간 제한, 재시도 기본 횟수/간격은 구현 전에 확정한다. 프론트엔드와 배포 프록시 시간 제한도 동기식 평가 시간 예산에 맞춰 확인한다.
 
@@ -330,7 +358,6 @@ Question은 여러 EvaluationCriterion과 여러 EvaluationAttempt를 가진다.
 
 - 답변의 최대 길이와 그에 맞는 요청 크기 제한.
 - LLM 재시도 기본 횟수, 재시도 간격, 개별 호출/전체 요청 시간 제한.
-- 경진대회용 초기 질문/평가 기준의 실제 내용과 데이터 입력 방식. 관리자 API를 추가하라는 의미는 아니다.
 - 실제 배포에 사용할 OpenRouter 모델과 키. 기존 `CHAT_MODEL` 설정을 사용하되 예시 값을 확정 모델로 간주하지 않는다.
 - 개발/배포 프론트엔드 Origin 및 필요한 CORS 허용 값.
 - 익명 답변/평가 기록의 보관 기간과 운영상 정리 정책. 삭제 API나 자동 정리 작업은 현재 범위에 추가하지 않는다.
