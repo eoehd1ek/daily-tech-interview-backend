@@ -25,7 +25,7 @@
 - 인증/인가, Redis, 캐싱, RAG, Embedding, Vector Store, 메시지 큐, Microservice, 불필요한 성능 최적화는 추가하지 않는다.
 - 프론트엔드 화면 구현은 별도 저장소의 작업이다. 여기에는 백엔드 구현과 연결 검증에 필요한 항목만 둔다.
 
-현재 Question/EvaluationCriterion 모델, Repository, 스키마/초기 데이터 마이그레이션과 PostgreSQL 테스트가 구현되어 있다. 질문 목록 API와 Service/Controller 계층별 테스트도 구현되어 있으며 나머지 API는 아직 구현하지 않았다. 기존 Flyway 의존성을 사용해 스키마를 관리하며, 테스트에서는 `validate`로 마이그레이션과 Entity 매핑의 일치를 확인한다.
+현재 Question/EvaluationCriterion 모델, Repository, 스키마/초기 데이터 마이그레이션과 PostgreSQL 테스트가 구현되어 있다. 질문 목록/상세 API, 상세 조회의 `400`/`404` 오류 처리와 Service/Controller 계층별 테스트도 구현되어 있으며 나머지 API는 아직 구현하지 않았다. 기존 Flyway 의존성을 사용해 스키마를 관리하며, 테스트에서는 `validate`로 마이그레이션과 Entity 매핑의 일치를 확인한다.
 
 ## 1. Question 및 평가 기준 모델
 
@@ -56,12 +56,16 @@
 
 ## 3. 질문 상세 조회
 
-- [ ] `GET /api/questions/{questionId}`와 상세 Response DTO 구현.
-- [ ] `id`, `title`, `content`만 반환하고 평가 기준/배점은 비공개 유지.
-- [ ] 잘못된 ID에 `400 INVALID_REQUEST`, 없는 질문에 `404 QUESTION_NOT_FOUND` 반환.
-- [ ] 성공, 잘못된 ID, 없는 질문, 비공개 필드 미노출 테스트.
+- [x] `GET /api/questions/{questionId}`와 상세 Response DTO 구현.
+- [x] `id`, `title`, `content`만 반환하고 평가 기준/배점은 비공개 유지.
+- [x] 잘못된 ID에 `400 INVALID_REQUEST`, 없는 질문에 `404 QUESTION_NOT_FOUND` 반환.
+- [x] 성공, 잘못된 ID, 없는 질문, 비공개 필드 미노출 테스트.
 
 완료 기준: 선택한 질문의 본문을 조회할 수 있고 API 계약의 오류 형식과 일치한다. 초기 오류 변환은 필요한 범위만 구현하고 8단계에서 공통 처리를 완성한다.
+
+구현/검증 결과: 기존 `findById`와 읽기 전용 Service에서 상세 DTO로 변환한다. Controller의 Long 경로 변수에 `@Min(1)`/`@Max(9_007_199_254_740_991L)`을 적용하고, 질문 Controller에 한정된 Advice에서 타입 변환/입력 범위 검증 오류와 질문 없음 예외를 `code`, `message` JSON으로 변환한다. 평가 기준 조회/검증, 새 의존성, 마이그레이션은 추가하지 않았다. Service는 MockitoExtension과 BDDMockito.given, Controller는 WebMvcTest/MockMvc로 검증하며 한글 이름과 given/when/then, AssertJ 규칙을 유지한다.
+
+`./gradlew clean build`의 첫 실행은 Docker 엔진 미실행으로 기존 Repository/context 테스트 5개가 실패했다. Docker Desktop을 시작한 뒤 재실행하여 총 21개(Service 4개, Controller 12개, Repository 4개, context 1개)가 모두 통과했다. 상세 성공/없는 질문, ID 0/음수/지원 범위 초과/문자/소수/Long 오버플로, 양 끝 경계값, 잘못된 ID의 Service 미호출, 상세/오류의 정확한 공개 필드와 기존 목록 회귀를 확인했다. 실제 서버/프론트엔드 연결과 공통 DB `500` 처리 완성은 이번 범위에 포함하지 않는다.
 
 ## 4. 평가 기록 모델
 

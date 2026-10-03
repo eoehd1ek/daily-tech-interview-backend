@@ -15,4 +15,16 @@ class QuestionService(
                 title = question.title,
             )
         }
+
+    @Transactional(readOnly = true)
+    fun getQuestion(questionId: Long): QuestionDetailResponse {
+        val question = questionRepository.findById(questionId)
+            .orElseThrow { QuestionNotFoundException() }
+
+        return QuestionDetailResponse(
+            id = checkNotNull(question.id),
+            title = question.title,
+            content = question.content,
+        )
+    }
 }

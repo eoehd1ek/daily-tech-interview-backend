@@ -1,6 +1,7 @@
 package com.eoehd1ek.tech.question
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.BDDMockito.given
@@ -9,6 +10,7 @@ import org.mockito.Mock
 import org.mockito.Mockito.verify
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.test.util.ReflectionTestUtils
+import java.util.Optional
 
 @ExtendWith(MockitoExtension::class)
 class QuestionServiceTest {
@@ -49,5 +51,35 @@ class QuestionServiceTest {
         // then
         assertThat(result).isEmpty()
         verify(questionRepository).findAll()
+    }
+
+    @Test
+    fun `질문 상세를 조회하면 질문의 ID와 제목과 본문을 반환한다`() {
+        // given
+        val questionId = 10L
+        val question = Question("상세 질문", "상세 질문 본문")
+        ReflectionTestUtils.setField(question, "id", questionId)
+        given(questionRepository.findById(questionId)).willReturn(Optional.of(question))
+
+        // when
+        val result = questionService.getQuestion(questionId)
+
+        // then
+        assertThat(result).isEqualTo(QuestionDetailResponse(questionId, question.title, question.content))
+        verify(questionRepository).findById(questionId)
+    }
+
+    @Test
+    fun `존재하지 않는 질문을 조회하면 질문 없음 예외가 발생한다`() {
+        // given
+        val questionId = 10L
+        given(questionRepository.findById(questionId)).willReturn(Optional.empty())
+
+        // when
+        val action = { questionService.getQuestion(questionId) }
+
+        // then
+        assertThatThrownBy { action() }.isInstanceOf(QuestionNotFoundException::class.java)
+        verify(questionRepository).findById(questionId)
     }
 }
