@@ -138,11 +138,19 @@
 - [ ] 실제 환경의 유효한 LLM 응답을 수동 확인하고, 제어 가능한 테스트로 타임아웃/잘못된 응답/재시도 실패를 검증.
 - [ ] 목록 → 상세 → 답변 제출 → 결과 표시 → 결과 재조회 흐름을 프론트엔드와 연결해 확인.
 - [ ] 프론트엔드와 중복 제출 방지, 분석 중 표시, 오류 시 답변 유지, 결과 새로고침 복원, POST 자동 재전송 방지를 확인.
-- [ ] 배포/개발 Origin을 확인하고 필요한 경우에만 해당 Origin에 대한 CORS 설정 및 연결 검증.
+- [x] `CORS_ALLOWED_ORIGINS` 기반 `/api/**` CORS 설정과 개발 Origin `http://localhost:5173` 적용, MockMvc 허용/거부/preflight 검증. 배포 Origin과 실제 브라우저/프록시 연결은 아래 별도 항목에서 확인.
+- [ ] 실제 개발/배포 프론트엔드와 브라우저 CORS 연결 및 운영 Origin/프록시 설정 검증.
 - [ ] 공개 API에 평가 기준이 노출되지 않는지, 결과 조회에 인증/소유자 보호가 없다는 제한이 공유되었는지 확인.
 
 완료 기준: 정상 경로와 핵심 실패 경로가 검증되고 결과 페이지를 다시 열어도 저장된 평가를 조회할 수 있다. 실제 호출/배포 연결 등 확인하지 못한 항목은 완료로 표시하지 않는다.
 
+### CORS 설정 및 검증
+
+- WebConfig/CorsProperties와 `app.cors.allowed-origins: ${CORS_ALLOWED_ORIGINS:}`를 추가했다. 빈 설정은 교차 Origin을 허용하지 않으며 허용 메서드는 GET/POST/OPTIONS, 요청 헤더는 Content-Type, 공개 응답 헤더는 Location이다. credentials와 와일드카드 Origin은 사용하지 않는다. Spring Security나 새 의존성은 추가하지 않았다.
+- 로컬 `.env`와 `.env.example`의 CORS 항목은 `CORS_ALLOWED_ORIGINS=http://localhost:5173`이다. 다른 환경에서는 실행 환경변수로 정확한 Origin을 지정한다. 복수 Origin은 쉼표로 구분한다. 예: `CORS_ALLOWED_ORIGINS=https://frontend.example.com,https://preview.example.com`. 변경 후 백엔드를 재시작하며 코드 수정/재빌드는 필요하지 않다. 경로와 끝의 `/`는 넣지 않는다. localhost와 127.0.0.1, 서로 다른 포트는 별도 Origin이다.
+- 초기 CORS 구현에서 `./gradlew clean build`가 성공했고 당시 전체 41개 테스트가 통과했다. 현재 중복 WebConfigOriginTest는 제거하고 WebConfigTest의 indexed property(`app.cors.allowed-origins[0]`, `[1]`)로 CorsProperties 바인딩과 MVC 정책 적용을 검증한다. 테스트에서 환경변수/placeholder는 재정의하지 않으며 production 환경변수 매핑은 유지한다. 별도 WebConfigWithoutOriginsTest는 Origin 설정을 아예 선언하지 않아 빈 목록 기본값의 `403`/허용 헤더 없음/Service 미호출을 확인한다. preflight 메서드 헤더는 쉼표 분리 후 trim하여 비교한다. CORS 테스트 11개와 기존 질문 Controller 테스트 12개, 총 23개가 통과했다. 여러 Origin 허용/미등록 Origin 거부, 정상 및 잘못된 메서드/헤더 preflight, 404의 CORS 헤더, Location 공개, credentials 미허용과 Origin 없는 요청 검증을 유지한다. 거부/preflight에는 Service 미호출을 확인한다. POST preflight는 현재 목록 경로의 정책 검증이며 평가 제출 API 구현이나 실제 브라우저/프론트엔드 연결 검증은 수행하지 않았다.
+- Spring MVC의 CORS 거부는 Controller 호출 전 `403`으로 처리되며 API의 BusinessException JSON 응답과 별개다. 추후 Security 적용 시 CORS 연동과 preflight 인증 제외를 확인하고, 배포 프록시가 OPTIONS를 차단하거나 CORS 헤더를 중복 추가하지 않도록 확인한다. 현재 프론트 요청에는 credentials include가 필요하지 않다.
+
 ## 구현 전 결정 필요
 
-`docs/API.md`의 미확정 사항을 참조한다. 답변 길이 제한, 재시도/시간 예산, 실제 LLM 모델, 프론트엔드 Origin, 익명 기록 보관 정책은 임의로 확정하지 않는다. 초기 질문/기준과 Flyway 입력 방식은 1단계에 기재한 내용으로 확정했다. 관련 작업 전에 필요한 결정만 확인하며, 이를 이유로 새 API나 범위 밖 기능을 추가하지 않는다.
+`docs/API.md`의 미확정 사항을 참조한다. 답변 길이 제한, 재시도/시간 예산, 실제 LLM 모델, 운영 프론트엔드 Origin, 익명 기록 보관 정책은 임의로 확정하지 않는다. 개발 Origin과 CORS 정책은 9단계에 기재한 내용으로 확정했다. 초기 질문/기준과 Flyway 입력 방식은 1단계에 기재한 내용으로 확정했다. 관련 작업 전에 필요한 결정만 확인하며, 이를 이유로 새 API나 범위 밖 기능을 추가하지 않는다.

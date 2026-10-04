@@ -27,6 +27,14 @@
 
 경로 ID가 양의 정수가 아니거나 지원 범위를 벗어나면 `400 INVALID_REQUEST`, 유효한 ID지만 리소스가 없으면 `404`를 반환한다.
 
+### CORS 및 환경별 Origin
+
+- `/api/**`에는 Spring MVC 공통 CORS 정책을 적용한다. 개발 프론트엔드 Origin은 `http://localhost:5173`이며 `app.cors.allowed-origins` 설정으로 관리한다. 현재 `.env`와 `.env.example`에는 `CORS_ALLOWED_ORIGINS=http://localhost:5173`을 설정했다. 애플리케이션 자체의 기본 허용 목록은 비어 있으므로 미설정 시 교차 Origin을 허용하지 않는다.
+- 배포 시 실행 환경변수 `CORS_ALLOWED_ORIGINS=https://frontend.example.com`으로 교체한다. 복수 Origin은 쉼표로 구분한다. 환경변수 변경 후 백엔드를 재시작하면 적용되며 코드 변경/재빌드는 필요하지 않다. Origin에는 경로나 끝의 `/` 없이 스킴/호스트/포트만 지정한다. localhost와 127.0.0.1, 다른 포트는 서로 다른 Origin이다. 와일드카드 허용은 사용하지 않는다.
+- 허용 메서드는 GET/POST/OPTIONS, 요청 헤더는 Content-Type, 브라우저에 공개하는 응답 헤더는 Location이다. 쿠키 등의 credentials는 허용하지 않으며 현재 프론트에서는 credentials include를 사용하지 않는다. OPTIONS preflight는 MVC에서 처리하고 별도 Controller는 만들지 않는다. CORS 허용이 미구현 API의 존재를 의미하지는 않는다.
+- 허용되지 않은 Origin/메서드/헤더는 MVC의 CORS 처리에서 거부하며 `403`과 CORS 헤더 미노출로 처리된다. 이 거부는 Controller의 API 오류 JSON 계약과 별개이며 브라우저에서는 응답 본문을 읽지 못할 수 있다. 허용 Origin의 정상/처리된 오류 응답에는 CORS 헤더를 제공한다.
+- CORS는 브라우저 교차 Origin 정책이며 인증이나 일반 클라이언트의 접근 제한 기능이 아니다. 추후 Spring Security 적용 시 CORS 연동과 preflight 처리를 확인한다. 배포 프록시가 OPTIONS를 막거나 CORS 헤더를 중복 생성하지 않도록 확인한다. 운영 Origin과 실제 브라우저 연결은 배포 환경에서 별도 검증한다.
+
 ### 공통 오류 형식
 
 ```json
@@ -369,5 +377,5 @@ Core Flow 연결 검증용 데이터는 스키마 마이그레이션 `V1.0.0__cr
 - 답변의 최대 길이와 그에 맞는 요청 크기 제한.
 - LLM 재시도 기본 횟수, 재시도 간격, 개별 호출/전체 요청 시간 제한.
 - 실제 배포에 사용할 OpenRouter 모델과 키. 기존 `CHAT_MODEL` 설정을 사용하되 예시 값을 확정 모델로 간주하지 않는다.
-- 개발/배포 프론트엔드 Origin 및 필요한 CORS 허용 값.
+- 실제 배포 프론트엔드 Origin. 개발 Origin `http://localhost:5173`과 CORS 정책은 2절에 확정했으며 운영 허용 목록은 환경변수로 지정한다.
 - 익명 답변/평가 기록의 보관 기간과 운영상 정리 정책. 삭제 API나 자동 정리 작업은 현재 범위에 추가하지 않는다.

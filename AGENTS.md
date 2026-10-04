@@ -117,6 +117,8 @@ LLM 제공자는 OpenRouter를 사용한다.
 - `@Column(updatable = false)`는 사용하지 않는다. 필드의 변경 정책은 필요한 애플리케이션 로직에서 관리하며 JPA 매핑으로 업데이트를 막지 않는다.
 - 감사 정보인 생성 시각은 JPA Auditing(`@EnableJpaAuditing`, `AuditingEntityListener`, `@CreatedDate`)으로 관리한다. 평가 기록의 `createdAt: Instant?`는 최초 영속화 시 설정한다. 직접 `Instant.now()`를 호출하는 Entity 콜백이나 DB 기본값/트리거로 중복 관리하지 않는다. 생성 전에는 null일 수 있지만 저장된 기록에서는 필수 값이다.
 - `createdAt`은 감사 정보이며 제출/평가 시각이나 만료 등 도메인 규칙에 사용하지 않는다. 시간 기반 규칙이 필요해지면 `submittedAt`, `evaluatedAt`처럼 사건을 표현하는 별도 필드를 해당 기능에서 추가한다. 현재는 공통 BaseEntity, 수정 시각, 사용자 감사 정보 및 기존 질문 모델의 감사 필드를 추가하지 않는다.
+- CORS는 `config/WebConfig`의 WebMvcConfigurer에서 `/api/**`에 공통 적용한다. 허용 Origin은 `app.cors.allowed-origins`와 `CORS_ALLOWED_ORIGINS`로 관리하고 코드의 localhost 기본값, `*`, Controller별 `@CrossOrigin`을 추가하지 않는다. 미설정 시 교차 Origin을 허용하지 않는다. 현재 GET/POST/OPTIONS와 Content-Type만 허용하고 응답 Location 헤더를 공개하며 credentials는 허용하지 않는다.
+- 개발 Origin은 `http://localhost:5173`이며 배포 Origin은 환경변수로 교체하고 백엔드를 재시작한다. Origin에는 스킴/호스트/포트만 포함하고 경로나 끝의 `/`를 넣지 않는다. CORS는 인증 기능이 아니며, 추후 Spring Security 적용 시 CORS 연동과 preflight 처리를 확인한다. 프록시에서 CORS 헤더를 중복 생성하지 않는다.
 
 # Backend Tests
 

@@ -23,3 +23,7 @@ spring:
         base-url: ${CHAT_BASE_URL}
         api-key: ${CHAT_API_KEY}
         model: ${CHAT_MODEL}
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:}
