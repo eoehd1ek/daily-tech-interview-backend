@@ -8,6 +8,7 @@
 - 이번 MVP의 명시적 범위를 우선한다. `AGENTS.md`에 있는 로그인 사용자 기록, 관리자 기능, 인증/인가는 아래 작업에 포함하지 않는다.
 - 기존 Kotlin, Java 25, Spring Boot 4, Spring AI 2, Spring Data JPA, PostgreSQL, Flyway 구성을 활용한다. 의존성이나 버전을 임의로 변경하지 않는다.
 - Controller / Service / Repository를 기본으로 사용하고 API에 Entity를 직접 노출하지 않는다.
+- 비즈니스 예외는 `BusinessException : RuntimeException`을 상속하고 HTTP 상태/오류 코드/안전한 사용자 메시지를 정의한다. 선택 조건 없는 `@RestControllerAdvice`의 `GlobalExceptionHandler`에서 공통 처리하며 특정 Controller 전용 Advice는 사용하지 않는다. 알 수 없는 예외/DB/LLM 오류의 전체 처리는 8단계에서 완성한다.
 - 기본 타입은 Kotlin/JPA 기본 매핑을 사용하며, 일반 문자열에 `columnDefinition`을 지정하지 않는다. `jsonb`처럼 특정 DB 타입이 꼭 필요한 경우에만 사용 이유를 확인한다. 실제 DB 타입은 Flyway에서 관리한다.
 - Flyway 파일명에는 항상 세 버전 요소를 명시한다: `V<major>.<minor>.<patch>__<description>.sql`. 스키마는 `V1.0.0`, 같은 주 버전의 초기 데이터는 `V1.0.1`로 작성한다. 이미 적용된 DB 이력을 자동 수정하지 않는다.
 - 테스트는 JUnit 5와 AssertJ의 `assertThat(actual).isEqualTo(expected)` 등 fluent assertion을 사용한다. 실제 DB Repository 테스트는 기존 Testcontainers JDBC 설정과 `@DataJpaTest`를 활용한다. 테스트 설정 파일에서 `test` 프로필을 활성화하므로 `@ActiveProfiles`와 불필요한 DB/Flyway 자동 설정 어노테이션을 추가하지 않는다.
@@ -63,7 +64,7 @@
 
 완료 기준: 선택한 질문의 본문을 조회할 수 있고 API 계약의 오류 형식과 일치한다. 초기 오류 변환은 필요한 범위만 구현하고 8단계에서 공통 처리를 완성한다.
 
-구현/검증 결과: 기존 `findById`와 읽기 전용 Service에서 상세 DTO로 변환한다. Controller의 Long 경로 변수에 `@Min(1)`/`@Max(9_007_199_254_740_991L)`을 적용하고, 질문 Controller에 한정된 Advice에서 타입 변환/입력 범위 검증 오류와 질문 없음 예외를 `code`, `message` JSON으로 변환한다. 평가 기준 조회/검증, 새 의존성, 마이그레이션은 추가하지 않았다. Service는 MockitoExtension과 BDDMockito.given, Controller는 WebMvcTest/MockMvc로 검증하며 한글 이름과 given/when/then, AssertJ 규칙을 유지한다.
+구현/검증 결과: 기존 `findById`와 읽기 전용 Service에서 상세 DTO로 변환한다. Controller의 Long 경로 변수에 `@Min(1)`/`@Max(9_007_199_254_740_991L)`을 적용한다. `QuestionNotFoundException`은 공통 `BusinessException`을 상속하며 Controller 제한 없는 `GlobalExceptionHandler`에서 타입 변환/입력 범위 검증 오류와 BusinessException을 `code`, `message` JSON으로 변환한다. 반환값 검증 실패는 `400`이 아닌 안전한 `500`으로 구분한다. 평가 기준 조회/검증, 새 의존성, 마이그레이션은 추가하지 않았다. Service는 MockitoExtension과 BDDMockito.given, Controller는 WebMvcTest/MockMvc로 검증하며 한글 이름과 given/when/then, AssertJ 규칙을 유지한다.
 
 `./gradlew clean build`의 첫 실행은 Docker 엔진 미실행으로 기존 Repository/context 테스트 5개가 실패했다. Docker Desktop을 시작한 뒤 재실행하여 총 21개(Service 4개, Controller 12개, Repository 4개, context 1개)가 모두 통과했다. 상세 성공/없는 질문, ID 0/음수/지원 범위 초과/문자/소수/Long 오버플로, 양 끝 경계값, 잘못된 ID의 Service 미호출, 상세/오류의 정확한 공개 필드와 기존 목록 회귀를 확인했다. 실제 서버/프론트엔드 연결과 공통 DB `500` 처리 완성은 이번 범위에 포함하지 않는다.
 
@@ -109,6 +110,10 @@
 완료 기준: 제출로 생성된 평가 ID를 조회하면 저장된 결과를 복원할 수 있다. 결과 화면 새로고침에 필요한 데이터를 제공하며 평가 기록 목록이나 사용자 기록 기능은 추가하지 않는다.
 
 ## 8. LLM 실패 및 공통 예외 처리
+
+- [x] `BusinessException : RuntimeException`과 이를 상속하는 `QuestionNotFoundException`, Controller 선택 조건 없는 `GlobalExceptionHandler`로 공통 예외 처리 기반 구현. BusinessException/입력 타입/메서드 검증 오류만 우선 처리하며 전체 DB/LLM/예상치 못한 오류 처리는 아래 항목에서 완성.
+
+기반 검증 결과: `./gradlew clean build`가 통과했으며 전체 25개 테스트가 성공했다. 추가 MockMvc 테스트 4개에서 질문 외 Controller의 BusinessException 상태/코드/메시지 전달, 입력 타입 및 범위 오류의 공통 `400`, 반환값 검증 실패의 안전한 `500`을 확인했다. 기존 질문 목록/상세의 `400`/`404` 계약은 유지하며 아직 아래 재시도 및 전체 예외 처리 항목을 완료한 것은 아니다.
 
 - [ ] 재시도 기본 횟수/간격, 개별 호출 및 전체 요청 시간 제한을 확인하고 환경설정으로 반영.
 - [ ] 최초 호출 + N회 재시도 규칙 구현. Spring AI/HTTP 클라이언트의 중첩 재시도가 없는지 확인.

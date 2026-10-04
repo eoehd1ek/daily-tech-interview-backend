@@ -43,6 +43,8 @@
 
 예시의 메시지 문구 자체는 고정 계약이 아니다. 프론트엔드는 메시지 문자열 대신 HTTP 상태와 `code`로 분기한다. 내부 예외, 스택 트레이스, API 키, LLM 원문 응답과 비공개 평가 기준은 오류 응답에 노출하지 않는다.
 
+백엔드의 비즈니스 예외는 `BusinessException : RuntimeException`을 상속한다. `QuestionNotFoundException`은 상태 `404`, 코드 `QUESTION_NOT_FOUND`, 안전한 사용자 메시지를 정의한다. 모든 Controller에 적용되는 `GlobalExceptionHandler`의 `@RestControllerAdvice`에서 BusinessException과 입력 타입/메서드 검증 오류를 공통 변환한다. 특정 Controller 선택 조건은 사용하지 않으며 입력 검증 메시지는 질문에 한정하지 않는다. 반환값 검증 오류는 잘못된 요청이 아니므로 안전한 `500 INTERNAL_SERVER_ERROR`로 처리한다. 알 수 없는 예외와 DB/LLM 오류의 공통 처리 완성은 후속 작업이며 이 기반 작업이 모든 오류 처리를 완료했다는 의미는 아니다.
+
 | HTTP 상태 | code | 발생 조건 |
 | --- | --- | --- |
 | 400 | INVALID_REQUEST | 잘못된 JSON, 필수 답변 누락/잘못된 타입/빈 답변, 잘못된 경로 ID |

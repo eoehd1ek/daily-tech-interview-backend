@@ -107,6 +107,9 @@ LLM 제공자는 OpenRouter를 사용한다.
 - Controller에 비즈니스 로직을 작성하지 않는다.
 - JPA Entity를 API request 또는 response로 직접 사용하지 않는다.
 - API에는 Request / Response DTO를 사용한다.
+- 비즈니스 예외는 `RuntimeException`을 상속하는 공통 `BusinessException`을 상속한다. 하위 예외에 HTTP 상태, 오류 코드, 사용자에게 공개해도 안전한 메시지를 정의하며 `GlobalExceptionHandler`가 `code`, `message` 응답으로 변환한다. 내부 정보나 원본 DB/LLM 예외 메시지를 BusinessException의 공개 메시지에 넣지 않는다.
+- 공통 예외 처리는 Controller 선택 조건이 없는 `@RestControllerAdvice`의 `GlobalExceptionHandler`에서 수행한다. `assignableTypes` 등으로 특정 Controller에 한정하거나 기능별로 같은 예외 처리를 중복하지 않는다. 입력 타입/범위 검증 오류는 `400 INVALID_REQUEST`, 반환값 검증 오류는 서버 오류로 구분한다. 아직 필요한 범위만 처리하며 알 수 없는 예외/DB/LLM 오류의 전체 처리는 해당 기능 작업에서 확장한다.
+- 예외 핸들러는 `ResponseEntity<ErrorResponse>`를 반환하고 메서드 본문에서 HTTP 상태를 지정한다. `@ResponseStatus`와 혼용하지 않는다. 동일한 오류 본문은 공통으로 분리하여 재사용하고, 다른 예외 핸들러 메서드를 응답 생성 용도로 호출하지 않는다. 오류 본문은 API 계약의 `code`, `message` 두 필드를 유지한다.
 - Spring Data JPA를 기본 데이터 접근 방식으로 사용한다.
 - native query는 명확한 이유가 있는 경우에만 사용한다.
 - 일반 문자열 등 기본 타입은 Kotlin/JPA 기본 매핑을 사용하고 `@Column(columnDefinition = ...)`으로 DB 타입을 고정하지 않는다. `jsonb`처럼 기능상 특정 DB 타입이 꼭 필요한 경우에만 이유를 확인한 뒤 사용한다. 실제 컬럼 타입은 Flyway에서 관리한다.
