@@ -10,7 +10,9 @@
 - Controller / Service / Repository를 기본으로 사용하고 API에 Entity를 직접 노출하지 않는다.
 - 비즈니스 예외는 `BusinessException : RuntimeException`을 상속하고 HTTP 상태/오류 코드/안전한 사용자 메시지를 정의한다. 선택 조건 없는 `@RestControllerAdvice`의 `GlobalExceptionHandler`에서 공통 처리하며 특정 Controller 전용 Advice는 사용하지 않는다. 알 수 없는 예외/DB/LLM 오류의 전체 처리는 8단계에서 완성한다.
 - 기본 타입은 Kotlin/JPA 기본 매핑을 사용하며, 일반 문자열에 `columnDefinition`을 지정하지 않는다. `jsonb`처럼 특정 DB 타입이 꼭 필요한 경우에만 사용 이유를 확인한다. 실제 DB 타입은 Flyway에서 관리한다.
+- `updatable = false`는 사용하지 않는다. 생성 시각을 포함한 필드의 변경 정책을 JPA 매핑의 업데이트 제한으로 강제하지 않는다.
 - Flyway 파일명에는 항상 세 버전 요소를 명시한다: `V<major>.<minor>.<patch>__<description>.sql`. 스키마는 `V1.0.0`, 같은 주 버전의 초기 데이터는 `V1.0.1`로 작성한다. 이미 적용된 DB 이력을 자동 수정하지 않는다.
+- 평가 기록의 `createdAt`은 JPA Auditing이 최초 영속화 시 기록하는 감사 정보다. 시간 관련 도메인 규칙에는 사용하지 않으며, 필요 시 `submittedAt` 등 별도 사건 시각을 추가한다. Auditing Entity 테스트에는 `@DataJpaTest`와 `@Import(JpaAuditingConfig::class)`를 사용한다.
 - 테스트는 JUnit 5와 AssertJ의 `assertThat(actual).isEqualTo(expected)` 등 fluent assertion을 사용한다. 실제 DB Repository 테스트는 기존 Testcontainers JDBC 설정과 `@DataJpaTest`를 활용한다. 테스트 설정 파일에서 `test` 프로필을 활성화하므로 `@ActiveProfiles`와 불필요한 DB/Flyway 자동 설정 어노테이션을 추가하지 않는다.
 - 테스트 메서드 이름은 검증할 동작과 기대 결과가 드러나는 한글 문장으로 작성한다. 모든 테스트 메서드에 `// given`, `// when`, `// then`을 순서대로 포함하여 데이터 준비, 검증 대상 호출, AssertJ 결과 검증을 구분한다.
 - Mockito mock 설정은 `org.mockito.BDDMockito.given`과 `willReturn`을 사용하여 `// given` 절에 작성한다. `Mockito.when`과 `thenReturn`은 사용하지 않는다.
@@ -26,7 +28,7 @@
 - 인증/인가, Redis, 캐싱, RAG, Embedding, Vector Store, 메시지 큐, Microservice, 불필요한 성능 최적화는 추가하지 않는다.
 - 프론트엔드 화면 구현은 별도 저장소의 작업이다. 여기에는 백엔드 구현과 연결 검증에 필요한 항목만 둔다.
 
-현재 Question/EvaluationCriterion 모델, Repository, 스키마/초기 데이터 마이그레이션과 PostgreSQL 테스트가 구현되어 있다. 질문 목록/상세 API, 상세 조회의 `400`/`404` 오류 처리와 Service/Controller 계층별 테스트도 구현되어 있으며 나머지 API는 아직 구현하지 않았다. 기존 Flyway 의존성을 사용해 스키마를 관리하며, 테스트에서는 `validate`로 마이그레이션과 Entity 매핑의 일치를 확인한다.
+현재 Question/EvaluationCriterion/EvaluationAttempt 모델과 Repository, 스키마/초기 데이터 마이그레이션, 평가 기록의 JPA Auditing 및 PostgreSQL 테스트가 구현되어 있다. 질문 목록/상세 API, 상세 조회의 `400`/`404` 오류 처리와 Service/Controller 계층별 테스트도 구현되어 있으며 평가 관련 API는 아직 구현하지 않았다. 기존 Flyway 의존성을 사용해 스키마를 관리하며, 테스트에서는 `validate`로 마이그레이션과 Entity 매핑의 일치를 확인한다.
 
 ## 1. Question 및 평가 기준 모델
 
@@ -70,12 +72,16 @@
 
 ## 4. 평가 기록 모델
 
-- [ ] EvaluationAttempt의 `questionId: Long` 참조 필드, Repository 및 Flyway 마이그레이션 구현. Question Entity 매핑과 DB 외래 키 제약 조건은 사용하지 않음.
-- [ ] 제출 답변 원문, 총점, 판정, 세 종류 피드백, 서버 생성 시각 저장.
-- [ ] User 관계 없이 완료된 평가만 저장하고 같은 질문의 복수 평가 허용.
-- [ ] 저장 후 재조회, 질문 ID 참조와 QuestionRepository 별도 조회, 생성 시각 및 필수 값 영속화 테스트.
+- [x] EvaluationAttempt의 `questionId: Long` 참조 필드, Repository 및 `V2.0.0__create_evaluation_attempt.sql` 구현. Question Entity 매핑과 DB 외래 키 제약 조건은 사용하지 않음.
+- [x] 제출 답변 원문, 총점, 문자열 enum 판정, 세 종류 피드백과 JPA Auditing의 생성 시각 저장.
+- [x] User 관계 없이 완료된 결과 필드를 가진 평가 기록을 저장하고 같은 질문의 복수 평가 허용. 실패/중간 결과를 생성하지 않는 Service 연결은 후속 평가/제출 작업에서 구현.
+- [x] 저장/조회 값 비교, 질문 ID로 QuestionRepository 별도 조회, 복수 기록, Auditing 생성 시각 설정 및 답변 공백/줄바꿈 보존 테스트.
 
 완료 기준: 평가 결과를 저장하고 ID로 다시 읽을 수 있다. 항목별 점수 이력, 진행 상태, 실패 작업 테이블은 필수 모델로 추가하지 않는다.
+
+구현 결과: `evaluation` 패키지의 EvaluationAttempt/EvaluationResult/EvaluationAttemptRepository와 `config/JpaAuditingConfig`를 추가했다. `createdAt: Instant?`는 `@CreatedDate`와 AuditingEntityListener로 설정하며 생성자 입력, 직접 시각 생성, 수정 시각, 공통 BaseEntity는 추가하지 않는다. 감사 시각은 제출/평가 이벤트 시각이 아니며 시간 기반 도메인 규칙과 분리한다. 총점/판정 계산은 5단계에서 구현하고 Entity에는 도메인 검증이나 계산 로직을 추가하지 않았다. 스키마는 TEXT 답변/피드백, VARCHAR 판정, TIMESTAMP WITH TIME ZONE 생성 시각과 필수 NOT NULL/PK/question_id 인덱스를 사용하며 FK/CHECK/DB enum/default/trigger/cascade는 사용하지 않는다. 질문 제목 스냅샷은 저장하지 않으며 후속 API에서 questionId로 현재 질문을 조회한다.
+
+검증 결과: Testcontainers PostgreSQL 18.6 Alpine에서 `./gradlew clean build`가 성공했고 전체 30개 테스트가 통과했다. 새 Repository 테스트 5개는 Repository 두 개만 주입하고 직접 데이터를 생성/저장한다. `@Import(JpaAuditingConfig::class)`로 감사 설정만 활성화하며 EntityManager/flush/clear와 인프라 assertion은 추가하지 않았다. 기존 규칙대로 같은 영속성 컨텍스트에서 비교하므로 commit 이후 DB 재로딩을 검증한 것은 아니다. 일반 타입 매핑과 새 스키마의 `ddl-auto: validate`도 통과했다. 개발/운영 DB에는 마이그레이션을 적용하지 않았다.
 
 ## 5. LLM 연동 및 평가
 

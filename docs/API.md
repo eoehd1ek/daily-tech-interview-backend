@@ -241,7 +241,7 @@ Request Body: 없음.
 | strengths | string | 잘 설명한 부분 |
 | weaknesses | string | 부족하거나 잘못 설명한 부분 |
 | improvements | string | 개선할 부분 |
-| createdAt | string | 서버에서 기록한 평가 생성 시각, UTC ISO 8601 |
+| createdAt | string | JPA Auditing이 기록한 평가 기록의 감사용 생성 시각, UTC ISO 8601 |
 
 주요 오류: `400 INVALID_REQUEST`, `404 EVALUATION_ATTEMPT_NOT_FOUND`, `500 INTERNAL_SERVER_ERROR`.
 
@@ -276,6 +276,14 @@ Question 하나에 1개 이상의 EvaluationCriterion과 여러 EvaluationAttemp
 - 프로젝트의 DB 스키마에는 외래 키 제약 조건, `ON DELETE CASCADE`, 배점 등 도메인 규칙을 강제하는 `CHECK` 및 트리거를 사용하지 않는다. PK, 필수 컬럼의 `NOT NULL`, `question_id` 조회 인덱스는 사용한다. 참조 정합성은 데이터 입력 및 애플리케이션의 생성/변경 흐름에서 관리한다.
 - 일반 문자열 등 기본 타입은 Kotlin/JPA 기본 매핑을 사용한다. `columnDefinition`은 `jsonb`처럼 특정 DB 타입이 기능상 꼭 필요한 경우에만 사용하며 일반 문자열에는 지정하지 않는다. DB 컬럼 타입은 Flyway 마이그레이션에서 관리한다.
 - Flyway 파일명은 `V<major>.<minor>.<patch>__<description>.sql` 형식으로 항상 세 버전 요소를 명시한다. 이미 적용된 마이그레이션의 변경이나 DB 이력 수정은 별도 확인 없이 수행하지 않는다.
+
+### 평가 기록 저장 및 감사 정책
+
+- 평가 기록 스키마는 `V2.0.0__create_evaluation_attempt.sql`로 추가한다. `EvaluationAttemptRepository`의 기본 저장/ID 조회를 사용하며, 같은 질문의 복수 기록을 허용한다. 평가 기록 초기 데이터나 이력 목록 API는 추가하지 않는다.
+- 답변은 공백과 줄바꿈을 포함한 원문을 보존한다. 총점과 세 종류 종합 피드백을 저장하고, `EvaluationResult`의 FAIL/RETRY/PASS는 JPA `EnumType.STRING`으로 저장한다. 점수/판정 계산과 LLM 응답 검증은 평가 로직에서 수행하며 DB CHECK나 DB 전용 enum은 사용하지 않는다.
+- 생성 시각은 JPA Auditing의 `@CreatedDate`와 AuditingEntityListener로 최초 영속화 시 기록한다. Kotlin 타입은 `Instant?`로 저장 전에는 null일 수 있지만 저장된 기록의 `created_at`은 NOT NULL이다. `updatable = false`는 사용하지 않으며 필드 변경 정책을 JPA 매핑으로 제한하지 않는다. PostgreSQL 컬럼은 TIMESTAMP WITH TIME ZONE으로 관리하고 Entity에 `columnDefinition`을 지정하지 않는다. DB 기본값/트리거와 직접 `Instant.now()` Entity 콜백은 사용하지 않는다.
+- `createdAt`은 감사 정보이며 답변 제출 시각, LLM 평가 시작/종료 시각, 조회 만료의 기준을 의미하지 않는다. 시간 기반 도메인 규칙이 생기면 `submittedAt` 또는 `evaluatedAt` 등 의미가 분명한 별도 필드를 추가한다. 공개 응답의 `createdAt` 이름과 UTC ISO 8601 형식은 유지한다.
+- 현재는 생성 시각만 적용하고 공통 BaseEntity, 수정 시각, 사용자 감사 정보 및 기존 질문 모델의 감사 필드는 추가하지 않는다. 질문 제목은 기록에 스냅샷으로 저장하지 않고 `questionId`로 현재 질문을 별도 조회한다.
 
 ### 평가 기준 작성 및 검증 정책
 

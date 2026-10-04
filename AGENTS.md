@@ -114,6 +114,9 @@ LLM 제공자는 OpenRouter를 사용한다.
 - native query는 명확한 이유가 있는 경우에만 사용한다.
 - 일반 문자열 등 기본 타입은 Kotlin/JPA 기본 매핑을 사용하고 `@Column(columnDefinition = ...)`으로 DB 타입을 고정하지 않는다. `jsonb`처럼 기능상 특정 DB 타입이 꼭 필요한 경우에만 이유를 확인한 뒤 사용한다. 실제 컬럼 타입은 Flyway에서 관리한다.
 - Flyway 파일명은 항상 `V<major>.<minor>.<patch>__<description>.sql` 형식으로 세 버전 요소를 명시한다. 예: `V1.0.0__create_question_and_evaluation_criterion.sql`, `V1.0.1__seed_initial_questions.sql`. 이미 적용된 마이그레이션의 내용/이름을 임의로 변경하거나 운영 DB의 이력을 자동 수정하지 않는다.
+- `@Column(updatable = false)`는 사용하지 않는다. 필드의 변경 정책은 필요한 애플리케이션 로직에서 관리하며 JPA 매핑으로 업데이트를 막지 않는다.
+- 감사 정보인 생성 시각은 JPA Auditing(`@EnableJpaAuditing`, `AuditingEntityListener`, `@CreatedDate`)으로 관리한다. 평가 기록의 `createdAt: Instant?`는 최초 영속화 시 설정한다. 직접 `Instant.now()`를 호출하는 Entity 콜백이나 DB 기본값/트리거로 중복 관리하지 않는다. 생성 전에는 null일 수 있지만 저장된 기록에서는 필수 값이다.
+- `createdAt`은 감사 정보이며 제출/평가 시각이나 만료 등 도메인 규칙에 사용하지 않는다. 시간 기반 규칙이 필요해지면 `submittedAt`, `evaluatedAt`처럼 사건을 표현하는 별도 필드를 해당 기능에서 추가한다. 현재는 공통 BaseEntity, 수정 시각, 사용자 감사 정보 및 기존 질문 모델의 감사 필드를 추가하지 않는다.
 
 # Backend Tests
 
@@ -127,6 +130,7 @@ LLM 제공자는 OpenRouter를 사용한다.
 - Repository 테스트에는 검증에 필요한 Repository만 주입한다. EntityManager, TestEntityManager, Flyway, JdbcTemplate, SessionFactory 등 인프라 객체를 주입하거나 사용하지 않으며 명시적 `flush`, `clear`, `saveAndFlush`를 추가하지 않는다. 같은 영속성 컨텍스트에서 조회한 Entity는 캐시된 객체일 수 있으므로 이 테스트를 별도 DB 재로딩이나 commit 후 영속화 검증으로 설명하지 않는다.
 - Repository 테스트는 실제 사용하는 저장/조회 메서드의 반환 값, 질문별 필터링, 정렬, 빈 결과 등 기능 동작을 검증한다. Flyway 버전/파일명, 초기 데이터 내용, 시스템 카탈로그의 제약/인덱스, SQL 횟수 검증은 추가하지 않는다. 향후 인프라 검증이 필요하더라도 사용자 요청 없이 이러한 코드나 의존을 다시 추가하지 않는다.
 - 실제 PostgreSQL이 필요한 Repository 테스트는 기본적으로 `@DataJpaTest`만 사용한다. `src/test/resources/application.yaml`의 `jdbc:tc:postgresql:18.6-alpine` 설정으로 Testcontainers가 DB를 시작하며, 개발/운영 DB나 수동으로 띄운 DB에 연결하지 않는다. 실행 환경에는 Docker 호환 런타임이 필요하다.
+- JPA Auditing을 사용하는 Entity의 Repository 테스트에는 `@Import(JpaAuditingConfig::class)`를 함께 사용하여 제한된 JPA 테스트 컨텍스트에서도 감사 기능을 활성화한다. Repository만 주입하는 규칙은 유지하며 감사 설정 import를 이유로 인프라 객체나 전체 SpringBootTest를 추가하지 않는다.
 - 테스트 설정 파일이 `spring.profiles.active=test`를 선언하므로 테스트 코드에 `@ActiveProfiles`를 추가하지 않는다. 현재 구성에서는 DB 대체 방지와 Flyway를 위한 `@AutoConfigureTestDatabase` 및 `@ImportAutoConfiguration(FlywayAutoConfiguration::class)`도 추가하지 않는다.
 - JPA 테스트 쓰기는 기본 트랜잭션 롤백을 유지한다. Flyway 마이그레이션과 초기 데이터는 테스트 환경의 자동 설정으로 적용하고 `ddl-auto: validate`로 Entity 매핑을 확인한다. 테스트 코드에서 이를 직접 제어하거나 검증하지 않는다. Hibernate 통계 수집과 `generate_statistics` 설정은 추가하지 않는다.
 
