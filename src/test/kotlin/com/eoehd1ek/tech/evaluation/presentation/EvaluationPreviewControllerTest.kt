@@ -1,9 +1,8 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.presentation
 
 import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
-import com.eoehd1ek.tech.evaluation.presentation.EvaluationPreviewController
 import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
 import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest

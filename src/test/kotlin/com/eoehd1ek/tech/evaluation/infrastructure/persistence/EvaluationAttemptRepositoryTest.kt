@@ -1,9 +1,8 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.infrastructure.persistence
 
 import com.eoehd1ek.tech.config.JpaAuditingConfig
 import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
-import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
 import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
 import org.assertj.core.api.Assertions.assertThat

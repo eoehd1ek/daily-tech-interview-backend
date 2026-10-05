@@ -1,7 +1,5 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.application
 
-import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
-import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException

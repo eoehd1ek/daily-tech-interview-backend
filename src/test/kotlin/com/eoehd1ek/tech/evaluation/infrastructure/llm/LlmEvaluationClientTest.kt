@@ -1,8 +1,7 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
 import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
-import com.eoehd1ek.tech.evaluation.infrastructure.llm.LlmEvaluationClient
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
