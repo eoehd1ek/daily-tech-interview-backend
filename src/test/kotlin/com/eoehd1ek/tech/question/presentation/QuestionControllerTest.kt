@@ -1,5 +1,9 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation
 
+import com.eoehd1ek.tech.question.application.QuestionService
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.presentation.response.QuestionDetailResponse
+import com.eoehd1ek.tech.question.presentation.response.QuestionResponse
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest

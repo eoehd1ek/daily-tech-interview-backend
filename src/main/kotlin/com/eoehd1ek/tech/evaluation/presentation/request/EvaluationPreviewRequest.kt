@@ -1,7 +1,7 @@
 package com.eoehd1ek.tech.evaluation.presentation.request
 
-import com.eoehd1ek.tech.question.AdminCriterionRequest
-import com.eoehd1ek.tech.question.AdminQuestionRequest
+import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
+import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue

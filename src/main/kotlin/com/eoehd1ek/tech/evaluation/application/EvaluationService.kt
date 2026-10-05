@@ -11,9 +11,9 @@ import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
 import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
-import com.eoehd1ek.tech.question.EvaluationCriterionRepository
-import com.eoehd1ek.tech.question.QuestionNotFoundException
-import com.eoehd1ek.tech.question.QuestionRepository
+import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

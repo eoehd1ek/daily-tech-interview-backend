@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation.request
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.validation.Valid

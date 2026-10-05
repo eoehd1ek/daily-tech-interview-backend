@@ -1,5 +1,13 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.application
 
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.domain.EvaluationCriterion
+import com.eoehd1ek.tech.question.domain.Question
+import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
+import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
+import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
+import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
+import com.eoehd1ek.tech.question.presentation.response.AdminQuestionResponse
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test

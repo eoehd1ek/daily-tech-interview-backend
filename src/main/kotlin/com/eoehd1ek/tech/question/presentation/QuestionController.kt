@@ -1,5 +1,8 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation
 
+import com.eoehd1ek.tech.question.application.QuestionService
+import com.eoehd1ek.tech.question.presentation.response.QuestionDetailResponse
+import com.eoehd1ek.tech.question.presentation.response.QuestionResponse
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import org.springframework.web.bind.annotation.GetMapping

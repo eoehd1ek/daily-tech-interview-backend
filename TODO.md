@@ -2,7 +2,7 @@
 
 ## 작업 기준
 
-1~9단계의 목표는 질문 조회부터 답변 제출, LLM 평가, 저장된 결과 조회까지의 Core User Flow 완성이다. 관리자 MVP 범위는 10~15단계와 `docs/API.md` 10절의 확정 계약으로 정의한다. 생성·수정·preview는 구현되었으며 관리자 GET/프론트 연결은 미완료다. 체크박스는 구현과 검증을 마친 항목만 완료로 표시한다.
+1~9단계의 목표는 질문 조회부터 답변 제출, LLM 평가, 저장된 결과 조회까지의 Core User Flow 완성이다. 관리자 MVP 범위는 10~15단계와 `docs/API.md` 10절의 확정 계약으로 정의한다. 관리자 목록·생성·수정·preview는 구현되었으며 관리자 상세 GET/프론트 실제 연결은 미완료다. 체크박스는 구현과 검증을 마친 항목만 완료로 표시한다.
 
 - 작업 전에 `AGENTS.md`와 `docs/API.md`, 관련 기존 코드를 읽는다.
 - 1~9단계에는 관리자/인증 기능을 포함하지 않았다. 10~15단계는 로그인 없는 관리자 질문 생성·수정·저장 전 평가 테스트만 다룬다. Spring Security + 아이디·비밀번호 인증은 MVP 이후 별도 계획이다. 로그인 사용자 기록과 관리자 사용자 평가 기록 조회는 이번 범위에 포함하지 않는다.
@@ -192,7 +192,7 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 - 저장 즉시 공개하며 기준은 전체 교체하고 프론트가 displayOrder를 명시적으로 전송한다. 서버는 필수/중복만 확인하고 값을 그대로 사용하며 양수/연속 번호 규칙은 추가하지 않는다. 기존 평가 기록은 보존하고 제목은 현재 값으로 읽는 기존 구현을 유지한다. 초안/발행/삭제/과거 평가 스냅샷은 추가하지 않는다.
 - preview는 일반 사용자와 같은 총점/판정/종합 피드백만 반환하며 비저장이다. 항목별 결과 API/화면은 추가하지 않는다. 미저장 입력 보호와 저장 후 이동은 프론트 담당이며 백엔드 임시저장 API는 없다.
 
-위 계약으로 백엔드 기능과 프론트 mock 작업을 진행할 수 있다. 전체 본문 크기 수치/실제 프록시 설정은 배포 책임으로 분리하며 인증 상세 계획도 현재 MVP 구현의 선행 조건이 아니다. 관리자 생성·수정·preview는 구현되었고 목록/상세 GET은 아직 미구현이다.
+위 계약으로 백엔드 기능과 프론트 mock 작업을 진행할 수 있다. 전체 본문 크기 수치/실제 프록시 설정은 배포 책임으로 분리하며 인증 상세 계획도 현재 MVP 구현의 선행 조건이 아니다. 관리자 목록·생성·수정·preview는 구현되었고 상세 GET은 아직 미구현이다.
 
 ## 11. 관리자 PUT CORS 지원
 
@@ -207,13 +207,17 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 
 목적: 수정 화면에 필요한 비공개 기준 조회와 생성/수정/테스트의 동일한 입력 규칙을 준비한다.
 
-- [ ] `GET /api/admin/questions`는 `{ id, title }[]`, 상세 GET은 `id`, `title`, `content`, `criteria[{ id, content, maxScore, displayOrder }]`를 반환한다. 공개 상세 DTO를 확장하지 않는다.
+- [x] `GET /api/admin/questions`는 별도 AdminQuestionController에서 기존 QuestionService와 QuestionResponse를 재사용해 `{ id, title }[]`를 반환한다. 정렬/검색/페이지네이션/인증/기준 조회는 추가하지 않는다.
+- [ ] 상세 GET은 `id`, `title`, `content`, `criteria[{ id, content, maxScore, displayOrder }]`를 반환한다. 공개 상세 DTO를 확장하지 않는다.
 - [ ] 상세 GET의 ID 검증/없는 질문 404/기준 정렬과 DB 오류 공통 처리를 구현한다. 평가 기준은 일반 사용자 목록/상세 DTO에 추가하지 않는다. 인증 전에는 관리자 상세 자체도 접근 보호가 없음을 계약에 명시한다.
 - [x] 생성/수정이 공유하는 AdminQuestionRequest 입력 검증을 구현한다. 기본 Jackson 변환 후 필수 비공백 문자열/제목 200·본문 10,000·기준 설명 1,000 UTF-16 상한/기준 1~10개/양의 정수 배점/합계 100을 검증하고 문자열 원문은 보존한다. 관리자 커스텀 역직렬화/별도 coercion 설정은 사용하지 않는다. preview 연결은 14단계에서 수행한다.
 - [x] 사용자 계약 변경: 생성/수정/preview의 기준에 displayOrder를 필수로 받는다. 기본 Jackson 변환 후 같은 요청 내 중복은 400 INVALID_REQUEST, 0·음수·불연속 값은 허용하며 값을 재번호화하지 않는다. 저장 응답/preview 프롬프트는 displayOrder 오름차순이다. 기준 ID/questionId는 요구하지 않는다.
 - 프론트 연결 정책 확인: 생성·수정·preview 모두 공통 AdminCriterionRequest의 displayOrder: Int를 이미 받는다. 프론트는 1 이상의 중복 없는 값을 명시적으로 보낸다. 서버는 전달 값을 그대로 저장/정렬하며 기존 중복 검증만 유지한다. 프론트 양수 정책에 맞춘 별도 서버 @Min 제약이나 배열 기반 재번호화는 추가하지 않는다.
 - [x] 생성/수정 Controller 테스트로 ID 경계/404/500과 입력 누락/null/Jackson 변환 불가 타입/공백/배점 0·음수/합계 부족·초과/각 문자열 상한과 상한+1/기준 0·1·10·11개 경계를 검증한다. 기본 변환이 허용하는 타입 coercion을 거부하는 테스트는 제거했다.
-- [ ] 관리자 GET 조회 필드/빈 목록/ID 경계/404/500을 검증한다.
+- [x] 관리자 목록의 id/title만 반환, 빈 목록, 내부 오류 500을 Controller 테스트 3개로 검증했다. 기존 조회 Service 테스트를 중복 추가하지 않는다.
+- [ ] 관리자 상세 GET 조회 필드/ID 경계/404/500을 검증한다.
+
+관리자 목록/패키지 정리 검증: question도 evaluation처럼 presentation(Controller/request/response), application(Service/exception), domain(Entity), infrastructure/persistence(Repository)로 이동했다. 관리자/일반 사용자 Controller는 각각 별도 클래스이며 목록 조회 구현/DTO만 재사용한다. 질문 테스트는 main에 대응하는 presentation/application/infrastructure/persistence로 이동하고 평가/CORS 테스트는 변경된 질문 import만 수정했다. `.\gradlew.bat clean build`가 통과했다. 관리자 상세 GET/새 의존성/인증/실제 LLM/브라우저 연동/프론트 코드 변경은 없다.
 
 완료 기준: 관리자 상세 형식으로 질문과 기준을 읽고 같은 작성 규칙을 저장과 테스트에서 재사용할 수 있다. 인증 보호는 없다. Entity 검증/DB CHECK/외래 키 제약으로 규칙을 옮기거나 공개 조회에서 저장 기준을 재검증하지 않는다.
 

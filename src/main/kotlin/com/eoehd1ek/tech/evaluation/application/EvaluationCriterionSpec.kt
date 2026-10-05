@@ -1,6 +1,6 @@
 package com.eoehd1ek.tech.evaluation.application
 
-import com.eoehd1ek.tech.question.EvaluationCriterion
+import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 
 data class EvaluationCriterionSpec(
     val id: Long,

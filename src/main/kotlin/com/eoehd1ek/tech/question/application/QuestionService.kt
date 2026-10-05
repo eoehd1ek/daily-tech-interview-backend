@@ -1,5 +1,9 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.application
 
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
+import com.eoehd1ek.tech.question.presentation.response.QuestionDetailResponse
+import com.eoehd1ek.tech.question.presentation.response.QuestionResponse
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

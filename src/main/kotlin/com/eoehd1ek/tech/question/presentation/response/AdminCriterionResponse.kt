@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation.response
 
 data class AdminCriterionResponse(
     val id: Long,

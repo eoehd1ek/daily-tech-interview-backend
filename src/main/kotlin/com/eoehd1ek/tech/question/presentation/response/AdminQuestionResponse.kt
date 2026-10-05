@@ -1,4 +1,7 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation.response
+
+import com.eoehd1ek.tech.question.domain.EvaluationCriterion
+import com.eoehd1ek.tech.question.domain.Question
 
 data class AdminQuestionResponse(
     val id: Long,

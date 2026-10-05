@@ -3,7 +3,7 @@ package com.eoehd1ek.tech.evaluation
 import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.infrastructure.llm.EvaluationResponseValidator
 import com.eoehd1ek.tech.evaluation.infrastructure.llm.LlmEvaluationClient
-import com.eoehd1ek.tech.question.Question
+import com.eoehd1ek.tech.question.domain.Question
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable

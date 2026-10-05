@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.domain
 
 import jakarta.persistence.*
 

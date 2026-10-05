@@ -1,5 +1,13 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation
 
+import com.eoehd1ek.tech.question.application.AdminQuestionService
+import com.eoehd1ek.tech.question.application.QuestionService
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
+import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
+import com.eoehd1ek.tech.question.presentation.response.AdminCriterionResponse
+import com.eoehd1ek.tech.question.presentation.response.AdminQuestionResponse
+import com.eoehd1ek.tech.question.presentation.response.QuestionResponse
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -14,6 +22,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import tools.jackson.databind.ObjectMapper
 
@@ -27,6 +36,59 @@ class AdminQuestionControllerTest {
 
     @MockitoBean
     private lateinit var service: AdminQuestionService
+
+    @MockitoBean
+    private lateinit var questionService: QuestionService
+
+    @Test
+    fun `관리자 목록은 질문 ID와 제목만 JSON 배열로 반환한다`() {
+        // given
+        val questions = listOf(QuestionResponse(10L, "첫 질문"), QuestionResponse(20L, "둘째 질문"))
+        given(questionService.getQuestions()).willReturn(questions)
+
+        // when
+        val response = mockMvc.perform(get("/api/admin/questions")).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(200)
+        assertThat(MediaType.parseMediaType(requireNotNull(response.contentType))).isEqualTo(MediaType.APPLICATION_JSON)
+        val body = objectMapper.readTree(response.contentAsByteArray)
+        assertThat(body).isEqualTo(objectMapper.readTree(objectMapper.writeValueAsBytes(questions)))
+        body.forEach { assertThat(it.propertyNames()).containsExactlyInAnyOrder("id", "title") }
+        verify(questionService).getQuestions()
+        verifyNoInteractions(service)
+    }
+
+    @Test
+    fun `관리자 목록에 질문이 없으면 빈 배열을 반환한다`() {
+        // given
+        given(questionService.getQuestions()).willReturn(emptyList())
+
+        // when
+        val response = mockMvc.perform(get("/api/admin/questions")).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(200)
+        assertThat(objectMapper.readTree(response.contentAsByteArray).isArray).isTrue()
+        assertThat(objectMapper.readTree(response.contentAsByteArray).size()).isZero()
+        verifyNoInteractions(service)
+    }
+
+    @Test
+    fun `관리자 목록 조회 오류는 안전한 서버 오류를 반환한다`() {
+        // given
+        given(questionService.getQuestions()).willThrow(IllegalStateException("private database details"))
+
+        // when
+        val response = mockMvc.perform(get("/api/admin/questions")).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(500)
+        assertThat(objectMapper.readTree(response.contentAsByteArray).get("code").asString())
+            .isEqualTo("INTERNAL_SERVER_ERROR")
+        assertThat(response.contentAsString).doesNotContain("private database details")
+        verifyNoInteractions(service)
+    }
 
     @Test
     fun `질문 생성은 인증 없이 저장된 상세와 생성 상태 및 Location을 반환한다`() {

@@ -6,7 +6,7 @@ import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundEx
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.presentation.EvaluationAttemptController
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
-import com.eoehd1ek.tech.question.QuestionNotFoundException
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest

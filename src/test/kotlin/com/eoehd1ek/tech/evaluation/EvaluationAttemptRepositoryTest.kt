@@ -4,8 +4,8 @@ import com.eoehd1ek.tech.config.JpaAuditingConfig
 import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
-import com.eoehd1ek.tech.question.Question
-import com.eoehd1ek.tech.question.QuestionRepository
+import com.eoehd1ek.tech.question.domain.Question
+import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

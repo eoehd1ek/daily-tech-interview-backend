@@ -1,9 +1,9 @@
 package com.eoehd1ek.tech.config
 
-import com.eoehd1ek.tech.question.QuestionController
-import com.eoehd1ek.tech.question.QuestionNotFoundException
-import com.eoehd1ek.tech.question.QuestionResponse
-import com.eoehd1ek.tech.question.QuestionService
+import com.eoehd1ek.tech.question.presentation.QuestionController
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.presentation.response.QuestionResponse
+import com.eoehd1ek.tech.question.application.QuestionService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest

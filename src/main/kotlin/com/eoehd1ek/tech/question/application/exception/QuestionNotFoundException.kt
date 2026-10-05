@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.application.exception
 
 import com.eoehd1ek.tech.common.presentation.exception.ApplicationException
 import com.eoehd1ek.tech.common.presentation.exception.ErrorType

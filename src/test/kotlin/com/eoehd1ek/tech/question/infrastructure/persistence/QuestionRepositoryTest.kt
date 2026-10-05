@@ -1,5 +1,7 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.infrastructure.persistence
 
+import com.eoehd1ek.tech.question.domain.EvaluationCriterion
+import com.eoehd1ek.tech.question.domain.Question
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired

@@ -1,5 +1,12 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.application
 
+import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.domain.EvaluationCriterion
+import com.eoehd1ek.tech.question.domain.Question
+import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
+import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
+import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
+import com.eoehd1ek.tech.question.presentation.response.AdminQuestionResponse
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 

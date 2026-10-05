@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.question.presentation.request
 
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
