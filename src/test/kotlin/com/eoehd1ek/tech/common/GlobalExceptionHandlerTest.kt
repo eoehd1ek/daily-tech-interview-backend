@@ -1,6 +1,6 @@
 package com.eoehd1ek.tech.common
 
-import com.eoehd1ek.tech.evaluation.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank

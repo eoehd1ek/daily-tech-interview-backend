@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.domain
 
 enum class EvaluationResult {
     FAIL,

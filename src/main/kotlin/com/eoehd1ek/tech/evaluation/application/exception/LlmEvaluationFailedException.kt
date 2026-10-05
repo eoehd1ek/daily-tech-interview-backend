@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.application.exception
 
 import com.eoehd1ek.tech.common.BusinessException
 import org.springframework.http.HttpStatus

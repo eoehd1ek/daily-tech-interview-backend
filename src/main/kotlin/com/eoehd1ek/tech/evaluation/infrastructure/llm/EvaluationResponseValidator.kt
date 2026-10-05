@@ -1,5 +1,8 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
+import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import org.springframework.stereotype.Component
 import tools.jackson.core.JacksonException
 import tools.jackson.core.StreamReadFeature
@@ -14,7 +17,7 @@ class EvaluationResponseValidator {
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
         .build()
 
-    fun validate(content: String, criteria: List<EvaluationCriterionInput>): EvaluatedAnswer {
+    fun validate(content: String, criteria: List<EvaluationCriterionSpec>): EvaluatedAnswerResult {
         val root = try {
             mapper.readTree(content)
         } catch (_: JacksonException) {
@@ -49,7 +52,7 @@ class EvaluationResponseValidator {
             total += value
         }
 
-        return EvaluatedAnswer(
+        return EvaluatedAnswerResult(
             score = total,
             result = when {
                 total < 50 -> EvaluationResult.FAIL

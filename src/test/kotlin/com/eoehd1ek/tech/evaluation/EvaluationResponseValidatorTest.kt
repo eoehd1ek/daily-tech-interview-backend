@@ -1,5 +1,10 @@
 package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.EvaluationResponseValidator
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.InvalidLlmResponseException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -24,7 +29,7 @@ class EvaluationResponseValidatorTest {
         val result = validator.validate(content, criteria)
 
         // then
-        assertThat(result).isEqualTo(EvaluatedAnswer(score, expected, "강점", "약점", "개선"))
+        assertThat(result).isEqualTo(EvaluatedAnswerResult(score, expected, "강점", "약점", "개선"))
     }
 
     @Test
@@ -40,7 +45,7 @@ class EvaluationResponseValidatorTest {
         val result = validator.validate(content, criteria)
 
         // then
-        assertThat(result).isEqualTo(EvaluatedAnswer(80, EvaluationResult.PASS, "강점", "약점", "개선"))
+        assertThat(result).isEqualTo(EvaluatedAnswerResult(80, EvaluationResult.PASS, "강점", "약점", "개선"))
     }
 
     @ParameterizedTest
@@ -60,7 +65,7 @@ class EvaluationResponseValidatorTest {
         val result = validator.validate(content, criteria)
 
         // then
-        assertThat(result).isEqualTo(EvaluatedAnswer(49, EvaluationResult.FAIL, "강점", "약점", "개선"))
+        assertThat(result).isEqualTo(EvaluatedAnswerResult(49, EvaluationResult.FAIL, "강점", "약점", "개선"))
     }
 
     @ParameterizedTest
@@ -146,8 +151,8 @@ class EvaluationResponseValidatorTest {
         assertThatThrownBy { action() }.isInstanceOf(InvalidLlmResponseException::class.java)
     }
 
-    private fun criterion(id: Long, maxScore: Int): EvaluationCriterionInput =
-        EvaluationCriterionInput(id, "평가 기준", maxScore)
+    private fun criterion(id: Long, maxScore: Int): EvaluationCriterionSpec =
+        EvaluationCriterionSpec(id, "평가 기준", maxScore)
 
     companion object {
         private fun response(items: String = """{"feedback":"항목 피드백","criterionId":10,"score":80}"""): String =

@@ -1,5 +1,17 @@
 package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.EvaluationService
+import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
+import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.EvaluationResponseValidator
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.LlmEvaluationClient
+import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
+import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
 import com.eoehd1ek.tech.question.EvaluationCriterion
 import com.eoehd1ek.tech.question.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.Question
@@ -45,7 +57,13 @@ class EvaluationServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = EvaluationService(questionRepository, criterionRepository, llmClient, EvaluationResponseValidator(), attemptRepository)
+        service = EvaluationService(
+            questionRepository,
+            criterionRepository,
+            llmClient,
+            EvaluationResponseValidator(),
+            attemptRepository
+        )
     }
 
     private val questionId = 10L
@@ -54,7 +72,7 @@ class EvaluationServiceTest {
     private val criteria = listOf(EvaluationCriterion(questionId, "테스트 기준", 100, 1).apply {
         ReflectionTestUtils.setField(this, "id", 20L)
     })
-    private val input = criteria.map(EvaluationCriterionInput::from)
+    private val input = criteria.map(EvaluationCriterionSpec::from)
 
     @Test
     fun `질문과 기준을 한번 조회하고 완료 결과를 저장하여 반환 ID와 감사 시각을 응답한다`() {
@@ -71,10 +89,12 @@ class EvaluationServiceTest {
         val result = service.submit(questionId, answer)
 
         // then
-        assertThat(result).isEqualTo(EvaluationAttemptResponse(
-            42L, questionId, question.title, answer, 85, EvaluationResult.PASS,
-            "장점", "단점", "개선점", requireNotNull(saved.createdAt),
-        ))
+        assertThat(result).isEqualTo(
+            EvaluationAttemptResponse(
+                42L, questionId, question.title, answer, 85, EvaluationResult.PASS,
+                "장점", "단점", "개선점", requireNotNull(saved.createdAt),
+            )
+        )
         val captor = ArgumentCaptor.forClass(EvaluationAttempt::class.java)
         verify(attemptRepository).save(captor.capture())
         assertThat(captor.value).usingRecursiveComparison()
@@ -108,7 +128,9 @@ class EvaluationServiceTest {
     fun `LLM 호출 실패는 애플리케이션 재호출 없이 전달한다`() {
         // given
         givenRepositories()
-        given(llmClient.evaluate(question.title, question.content, input, answer)).willThrow(LlmEvaluationFailedException())
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willThrow(
+            LlmEvaluationFailedException()
+        )
 
         // when
         val action = { service.submit(questionId, answer) }
@@ -221,8 +243,10 @@ class EvaluationServiceTest {
     @Test
     fun `평가 기록 조회는 저장된 결과와 현재 질문 제목을 평가 없이 복원한다`() {
         // given
-        val saved = EvaluationAttempt(questionId, answer, 7, EvaluationResult.PASS,
-            "  저장된 장점\n  ", "저장된 단점", "저장된 개선점").apply {
+        val saved = EvaluationAttempt(
+            questionId, answer, 7, EvaluationResult.PASS,
+            "  저장된 장점\n  ", "저장된 단점", "저장된 개선점"
+        ).apply {
             ReflectionTestUtils.setField(this, "id", 42L)
             ReflectionTestUtils.setField(this, "createdAt", Instant.parse("2026-10-01T07:30:00Z"))
         }
@@ -234,10 +258,12 @@ class EvaluationServiceTest {
         val response = service.getAttempt(42L)
 
         // then
-        assertThat(response).isEqualTo(EvaluationAttemptResponse(
-            42L, questionId, currentQuestion.title, answer, 7, EvaluationResult.PASS,
-            saved.strengths, saved.weaknesses, saved.improvements, requireNotNull(saved.createdAt),
-        ))
+        assertThat(response).isEqualTo(
+            EvaluationAttemptResponse(
+                42L, questionId, currentQuestion.title, answer, 7, EvaluationResult.PASS,
+                saved.strengths, saved.weaknesses, saved.improvements, requireNotNull(saved.createdAt),
+            )
+        )
         verify(attemptRepository).findById(42L)
         verify(questionRepository).findById(questionId)
         verifyNoMoreInteractions(attemptRepository, questionRepository)
@@ -306,11 +332,13 @@ class EvaluationServiceTest {
     @Test
     fun `저장 전 평가는 지정 순서의 현재 입력으로 평가하고 Repository를 사용하지 않는다`() {
         // given
-        val request = EvaluationPreviewRequest(" 미저장 제목 ", "미저장 본문", listOf(
-            AdminCriterionRequest("나중 기준", 60, 20), AdminCriterionRequest("먼저 기준", 40, -5),
-        ), answer)
+        val request = EvaluationPreviewRequest(
+            " 미저장 제목 ", "미저장 본문", listOf(
+                AdminCriterionRequest("나중 기준", 60, 20), AdminCriterionRequest("먼저 기준", 40, -5),
+            ), answer
+        )
         val previewCriteria = listOf(
-            EvaluationCriterionInput(1L, "먼저 기준", 40), EvaluationCriterionInput(2L, "나중 기준", 60),
+            EvaluationCriterionSpec(1L, "먼저 기준", 40), EvaluationCriterionSpec(2L, "나중 기준", 60),
         )
         given(llmClient.evaluate(request.title, request.content, previewCriteria, answer)).willReturn("""
             {"criteria":[{"criterionId":2,"score":50,"feedback":"두번째"},
@@ -322,9 +350,11 @@ class EvaluationServiceTest {
         val result = service.preview(request)
 
         // then
-        assertThat(result).isEqualTo(EvaluationPreviewResponse(
-            request.title, answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
-        ))
+        assertThat(result).isEqualTo(
+            EvaluationPreviewResponse(
+                request.title, answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+            )
+        )
         verify(llmClient).evaluate(request.title, request.content, previewCriteria, answer)
         verifyNoInteractions(questionRepository, criterionRepository, attemptRepository)
     }
@@ -334,7 +364,7 @@ class EvaluationServiceTest {
     fun `저장 전 평가의 모델 오류와 잘못된 응답은 저장 없이 평가 실패로 처리한다`(callFails: Boolean) {
         // given
         val request = EvaluationPreviewRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 0)), answer)
-        val criteria = listOf(EvaluationCriterionInput(1L, "기준", 100))
+        val criteria = listOf(EvaluationCriterionSpec(1L, "기준", 100))
         if (callFails) {
             given(llmClient.evaluate(request.title, request.content, criteria, answer))
                 .willThrow(LlmEvaluationFailedException())

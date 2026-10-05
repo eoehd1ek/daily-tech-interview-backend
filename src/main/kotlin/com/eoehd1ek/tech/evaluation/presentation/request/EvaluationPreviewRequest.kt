@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.presentation.request
 
 import com.eoehd1ek.tech.question.AdminCriterionRequest
 import com.eoehd1ek.tech.question.AdminQuestionRequest

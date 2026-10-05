@@ -1,5 +1,7 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.presentation.response
 
+import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import java.time.Instant
 
 data class EvaluationAttemptResponse(

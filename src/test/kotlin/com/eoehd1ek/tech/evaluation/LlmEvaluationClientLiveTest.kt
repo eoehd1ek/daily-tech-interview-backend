@@ -1,5 +1,8 @@
 package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.EvaluationResponseValidator
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.LlmEvaluationClient
 import com.eoehd1ek.tech.question.Question
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -27,9 +30,9 @@ class LlmEvaluationClientLiveTest {
         val client = LlmEvaluationClient(model)
         val question = Question("데이터베이스 인덱스", "인덱스의 목적과 탐색 원리, 장단점을 설명해주세요.")
         val criteria = listOf(
-            EvaluationCriterionInput(101L, "인덱스의 목적과 조회 성능 향상을 설명한다", 30),
-            EvaluationCriterionInput(102L, "B-Tree 기반 탐색 원리를 설명한다", 30),
-            EvaluationCriterionInput(103L, "저장 공간과 데이터 변경 시 유지 비용을 설명한다", 40),
+            EvaluationCriterionSpec(101L, "인덱스의 목적과 조회 성능 향상을 설명한다", 30),
+            EvaluationCriterionSpec(102L, "B-Tree 기반 탐색 원리를 설명한다", 30),
+            EvaluationCriterionSpec(103L, "저장 공간과 데이터 변경 시 유지 비용을 설명한다", 40),
         )
         val answer = """
             인덱스는 전체 행을 순회하지 않고 필요한 데이터를 빠르게 찾도록 돕는 자료구조입니다.

@@ -1,5 +1,8 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.presentation
 
+import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationAttemptRequest
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
+import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min

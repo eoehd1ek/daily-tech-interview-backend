@@ -1,5 +1,11 @@
 package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.evaluation.application.EvaluationService
+import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
+import com.eoehd1ek.tech.evaluation.presentation.EvaluationPreviewController
+import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
 import com.eoehd1ek.tech.question.AdminCriterionRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -30,10 +36,14 @@ class EvaluationPreviewControllerTest {
     @Test
     fun `저장 전 평가 요청은 저장 ID 없이 총점 판정과 종합 피드백을 반환한다`() {
         // given
-        val request = EvaluationPreviewRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 0)),
-            "  답변\n원문  ")
-        val expected = EvaluationPreviewResponse(request.title, request.answer, 85, EvaluationResult.PASS,
-            "장점", "단점", "개선점")
+        val request = EvaluationPreviewRequest(
+            "제목", "본문", listOf(AdminCriterionRequest("기준", 100, 0)),
+            "  답변\n원문  "
+        )
+        val expected = EvaluationPreviewResponse(
+            request.title, request.answer, 85, EvaluationResult.PASS,
+            "장점", "단점", "개선점"
+        )
         given(service.preview(request)).willReturn(expected)
 
         // when
@@ -76,9 +86,11 @@ class EvaluationPreviewControllerTest {
             EvaluationPreviewRequest("제목", "본문", criterion, "가".repeat(3000)),
         )
         requests.forEach {
-            given(service.preview(it)).willReturn(EvaluationPreviewResponse(
-                it.title, it.answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
-            ))
+            given(service.preview(it)).willReturn(
+                EvaluationPreviewResponse(
+                    it.title, it.answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+                )
+            )
         }
         val bodies = requests.mapIndexed { index, item ->
             if (index == 0) mapper.writeValueAsString(mapOf(

@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.presentation.request
 
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size

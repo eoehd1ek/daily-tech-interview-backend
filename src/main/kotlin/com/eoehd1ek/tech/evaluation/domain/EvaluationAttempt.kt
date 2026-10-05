@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.domain
 
 import jakarta.persistence.*
 import org.springframework.data.annotation.CreatedDate

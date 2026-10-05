@@ -1,5 +1,11 @@
 package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.evaluation.application.EvaluationService
+import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
+import com.eoehd1ek.tech.evaluation.presentation.EvaluationAttemptController
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
 import com.eoehd1ek.tech.question.QuestionNotFoundException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test

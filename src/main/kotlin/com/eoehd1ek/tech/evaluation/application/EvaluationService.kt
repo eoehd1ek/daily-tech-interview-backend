@@ -1,5 +1,16 @@
-package com.eoehd1ek.tech.evaluation
+package com.eoehd1ek.tech.evaluation.application
 
+import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
+import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
+import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.EvaluationResponseValidator
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.InvalidLlmResponseException
+import com.eoehd1ek.tech.evaluation.infrastructure.llm.LlmEvaluationClient
+import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
+import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
+import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
 import com.eoehd1ek.tech.question.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.QuestionNotFoundException
 import com.eoehd1ek.tech.question.QuestionRepository
@@ -18,7 +29,7 @@ class EvaluationService(
         val question = questionRepository.findById(questionId)
             .orElseThrow { QuestionNotFoundException() }
         val criteria = criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)
-            .map(EvaluationCriterionInput::from)
+            .map(EvaluationCriterionSpec.Companion::from)
         val evaluated = evaluate(question.title, question.content, criteria, answer)
         val saved = attemptRepository.save(
             EvaluationAttempt(
@@ -38,7 +49,7 @@ class EvaluationService(
         val criteria = request.criteria.map { requireNotNull(it) }
             .sortedBy { it.displayOrder }
             .mapIndexed { index, criterion ->
-                EvaluationCriterionInput(index + 1L, criterion.content, criterion.maxScore)
+                EvaluationCriterionSpec(index + 1L, criterion.content, criterion.maxScore)
             }
         val evaluated = evaluate(request.title, request.content, criteria, request.answer)
         return EvaluationPreviewResponse(
@@ -55,9 +66,9 @@ class EvaluationService(
     private fun evaluate(
         title: String,
         content: String,
-        criteria: List<EvaluationCriterionInput>,
+        criteria: List<EvaluationCriterionSpec>,
         answer: String,
-    ): EvaluatedAnswer {
+    ): EvaluatedAnswerResult {
         val response = llmClient.evaluate(title, content, criteria, answer)
         return try {
             validator.validate(response, criteria)

@@ -1,5 +1,8 @@
 package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
+import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
+import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
 import com.eoehd1ek.tech.question.EvaluationCriterion
 import com.eoehd1ek.tech.question.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.Question
@@ -135,9 +138,11 @@ class EvaluationCoreFlowTest {
         val createdBody = objectMapper.readTree(created.body())
         val questionId = createdBody.get("id").asLong()
         val oldCriterionId = createdBody.get("criteria").get(0).get("id").asLong()
-        val attempt = attemptRepository.save(EvaluationAttempt(
-            questionId, "보존할 답변", 80, EvaluationResult.PASS, "장점", "단점", "개선점",
-        ))
+        val attempt = attemptRepository.save(
+            EvaluationAttempt(
+                questionId, "보존할 답변", 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+            )
+        )
         val updated = client.send(HttpRequest.newBuilder(URI.create("$base/api/admin/questions/$questionId"))
             .header("Content-Type", "application/json")
             .PUT(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changed))).build(),
