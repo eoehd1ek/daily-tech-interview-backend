@@ -140,7 +140,11 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 
 ## 8. LLM 실패 및 공통 예외 처리
 
-예외 계층 후속 정리: 마지막 커밋의 BusinessExceptionNew/ApplicationException/DomainException/ErrorType을 사용한다. 질문/평가 기록 없음과 LLM 평가 실패는 ApplicationException이며 도메인 규칙 위반에만 DomainException을 사용한다. 구 BusinessException과 HTTP 상태 의존성은 제거하고 Handler에서만 400/404/409/502를 매핑한다. 내부 InvalidLlmResponseException은 기존 Service의 안전한 평가 실패 변환을 유지한다. 아래 초기 구현 기록의 구 계층 설명은 당시 상태이며 현재 API 계약은 유지한다.
+평가 책임 분리(2026-10-06): 기존 EvaluationResponseValidator를 제거하고 JSON 파싱/형식 검증은 infrastructure.llm.LlmEvaluationResponseParser, 기준 개수/ID/중복/점수 범위는 application.validation.EvaluationProviderResultValidator, 점수 판정은 domain.EvaluationResult.fromScore로 나눴다. EvaluationCriterionSpec와 EvaluationProviderResult는 application.model에, EvaluationProvider는 application.port에 둔다. Service는 raw JSON/Jackson/JsonNode/Spring AI/LLM 구현을 모르고 검증 후 점수 합산만 수행한다. LlmEvaluationClient가 Provider를 구현하고 파싱 실패를 안전한 LlmEvaluationFailedException으로 변환한다. port.out/port.out.model이나 LLM parser/exception 하위 패키지는 사용하지 않고 작은 인터페이스 하나만 유지한다. 총 배점 100인 정상 저장 기준 전제와 공개 API/preview 계약/기존 모델 설정·Schema·timeout/retry는 유지한다. Factory/Calculator/Mapper나 새 의존성은 추가하지 않았다.
+
+책임 분리 검증: 기존 Validator 테스트를 parser/application.validation/domain 테스트로 이관하고 Service mock은 정규화된 Provider 결과를 반환하도록 수정했다. LLM 클라이언트의 파싱 실패→안전한 평가 실패 테스트도 추가했다. 최초 compileKotlin에서 Jackson JsonNode의 map 메서드와 Kotlin 컬렉션 map의 충돌로 타입 오류가 발생해 배열을 toList로 변환 후 매핑하도록 수정했다. 이후 `.\gradlew.bat clean build`와 기존 mock 모델 기반 Core Flow가 통과했다. Application의 Jackson/JsonNode/Spring AI/LLM 구현 참조는 없으며 실제 LLM은 호출하지 않았다.
+
+예외 계층 후속 정리: 마지막 커밋의 BusinessExceptionNew/ApplicationException/DomainException/ErrorType을 사용한다. 질문/평가 기록 없음과 LLM 평가 실패는 ApplicationException이며 도메인 규칙 위반에만 DomainException을 사용한다. 구 BusinessException과 HTTP 상태 의존성은 제거하고 Handler에서만 400/404/409/502를 매핑한다. 내부 InvalidLlmResponseException은 후속 책임 분리에서 LlmEvaluationClient가 안전한 평가 실패로 변환하도록 옮겼다. 아래 초기 구현 기록의 구 계층 설명은 당시 상태이며 현재 API 계약은 유지한다.
 
 후속 검증: `.\gradlew.bat clean build`가 통과했다. 공통 Handler 테스트의 ApplicationException/CONFLICT와 DomainException/INVALID_INPUT 매핑, 기존 질문·평가 기록 404/LLM 실패 502/내부 오류 500/405·415 보존 회귀를 확인했다. src의 구 BusinessException 참조와 예외 클래스의 Spring HTTP 의존성은 없다. 새로운 의존성/HTTP 계약 변경/실제 LLM 호출은 추가하지 않았다.
 

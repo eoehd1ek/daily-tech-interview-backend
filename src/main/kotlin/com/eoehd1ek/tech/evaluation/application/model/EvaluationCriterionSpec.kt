@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.evaluation.application
+package com.eoehd1ek.tech.evaluation.application.model
 
 import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 
@@ -9,6 +9,10 @@ data class EvaluationCriterionSpec(
 ) {
     companion object {
         fun from(criterion: EvaluationCriterion): EvaluationCriterionSpec =
-            EvaluationCriterionSpec(checkNotNull(criterion.id), criterion.content, criterion.maxScore)
+            EvaluationCriterionSpec(
+                id = checkNotNull(criterion.id),
+                content = criterion.content,
+                maxScore = criterion.maxScore
+            )
     }
 }

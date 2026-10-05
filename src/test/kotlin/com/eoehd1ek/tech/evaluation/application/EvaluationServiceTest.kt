@@ -4,8 +4,10 @@ import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedExc
 import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
-import com.eoehd1ek.tech.evaluation.infrastructure.llm.EvaluationResponseValidator
-import com.eoehd1ek.tech.evaluation.infrastructure.llm.LlmEvaluationClient
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
+import com.eoehd1ek.tech.evaluation.application.validation.EvaluationProviderResultValidator
 import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
 import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
@@ -46,7 +48,7 @@ class EvaluationServiceTest {
     private lateinit var criterionRepository: EvaluationCriterionRepository
 
     @Mock
-    private lateinit var llmClient: LlmEvaluationClient
+    private lateinit var llmClient: EvaluationProvider
 
     @Mock
     private lateinit var attemptRepository: EvaluationAttemptRepository
@@ -59,7 +61,7 @@ class EvaluationServiceTest {
             questionRepository,
             criterionRepository,
             llmClient,
-            EvaluationResponseValidator(),
+            EvaluationProviderResultValidator(),
             attemptRepository
         )
     }
@@ -76,10 +78,7 @@ class EvaluationServiceTest {
     fun `질문과 기준을 한번 조회하고 완료 결과를 저장하여 반환 ID와 감사 시각을 응답한다`() {
         // given
         givenRepositories()
-        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn("""
-            {"criteria":[{"criterionId":20,"score":85,"feedback":"잘 설명했습니다."}],
-             "strengths":"장점", "weaknesses":"단점", "improvements":"개선점"}
-        """.trimIndent())
+        givenValidEvaluation()
         val saved = savedAttempt()
         given(attemptRepository.save(any(EvaluationAttempt::class.java))).willReturn(saved)
 
@@ -105,12 +104,14 @@ class EvaluationServiceTest {
         verifyNoMoreInteractions(questionRepository, criterionRepository, llmClient, attemptRepository)
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = ["not JSON", "{}"])
-    fun `잘못된 LLM 응답은 재호출 없이 안전한 평가 실패로 처리한다`(content: String) {
+    @Test
+    fun `기준과 불일치하는 평가 응답은 재호출 없이 안전한 평가 실패로 처리한다`() {
         // given
         givenRepositories()
-        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn(content)
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn(
+            EvaluationProviderResult(listOf(EvaluationProviderResult.CriterionResult(21L, 85, "피드백")),
+                "장점", "단점", "개선점"),
+        )
 
         // when
         val action = { service.submit(questionId, answer) }
@@ -321,10 +322,10 @@ class EvaluationServiceTest {
     }
 
     private fun givenValidEvaluation() {
-        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn("""
-            {"criteria":[{"criterionId":20,"score":85,"feedback":"잘 설명했습니다."}],
-             "strengths":"장점", "weaknesses":"단점", "improvements":"개선점"}
-        """.trimIndent())
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn(
+            EvaluationProviderResult(listOf(EvaluationProviderResult.CriterionResult(20L, 85, "잘 설명했습니다.")),
+                "장점", "단점", "개선점"),
+        )
     }
 
     @Test
@@ -338,11 +339,12 @@ class EvaluationServiceTest {
         val previewCriteria = listOf(
             EvaluationCriterionSpec(1L, "먼저 기준", 40), EvaluationCriterionSpec(2L, "나중 기준", 60),
         )
-        given(llmClient.evaluate(request.title, request.content, previewCriteria, answer)).willReturn("""
-            {"criteria":[{"criterionId":2,"score":50,"feedback":"두번째"},
-                         {"criterionId":1,"score":30,"feedback":"첫번째"}],
-             "strengths":"장점", "weaknesses":"단점", "improvements":"개선점"}
-        """.trimIndent())
+        given(llmClient.evaluate(request.title, request.content, previewCriteria, answer)).willReturn(
+            EvaluationProviderResult(listOf(
+                EvaluationProviderResult.CriterionResult(2L, 50, "두번째"),
+                EvaluationProviderResult.CriterionResult(1L, 30, "첫번째"),
+            ), "장점", "단점", "개선점"),
+        )
 
         // when
         val result = service.preview(request)
@@ -367,7 +369,9 @@ class EvaluationServiceTest {
             given(llmClient.evaluate(request.title, request.content, criteria, answer))
                 .willThrow(LlmEvaluationFailedException())
         } else {
-            given(llmClient.evaluate(request.title, request.content, criteria, answer)).willReturn("{}")
+            given(llmClient.evaluate(request.title, request.content, criteria, answer)).willReturn(
+                EvaluationProviderResult(emptyList(), "장점", "단점", "개선점"),
+            )
         }
 
         // when

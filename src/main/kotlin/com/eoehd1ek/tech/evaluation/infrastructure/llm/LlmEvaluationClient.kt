@@ -1,6 +1,8 @@
 package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
-import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -12,10 +14,16 @@ import tools.jackson.databind.json.JsonMapper
 @Component
 class LlmEvaluationClient(
     private val model: OpenAiChatModel,
-) {
+    private val parser: LlmEvaluationResponseParser,
+) : EvaluationProvider {
     private val mapper = JsonMapper.builder().build()
 
-    fun evaluate(title: String, content: String, criteria: List<EvaluationCriterionSpec>, answer: String): String {
+    override fun evaluate(
+        title: String,
+        content: String,
+        criteria: List<EvaluationCriterionSpec>,
+        answer: String,
+    ): EvaluationProviderResult {
         val data = mapper.writeValueAsString(
             mapOf(
                 "question" to mapOf("title" to title, "content" to content),
@@ -55,8 +63,9 @@ class LlmEvaluationClient(
             override fun toString(): String = "EvaluationPrompt[content redacted]"
         }
         return try {
-            model.call(prompt).result?.output?.text?.takeIf { it.isNotBlank() }
+            val raw = model.call(prompt).result?.output?.text?.takeIf { it.isNotBlank() }
                 ?: throw LlmEvaluationFailedException()
+            parser.parse(raw)
         } catch (_: RuntimeException) {
             throw LlmEvaluationFailedException()
         }

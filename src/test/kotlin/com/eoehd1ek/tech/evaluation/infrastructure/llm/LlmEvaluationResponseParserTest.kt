@@ -1,8 +1,7 @@
 package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
-import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
-import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
-import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult.CriterionResult
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -13,37 +12,69 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.NullSource
 import org.junit.jupiter.params.provider.ValueSource
 
-class EvaluationResponseValidatorTest {
-    private val validator = EvaluationResponseValidator()
-
-    @ParameterizedTest
-    @CsvSource("0, FAIL", "49, FAIL", "50, RETRY", "79, RETRY", "80, PASS", "100, PASS")
-    fun `점수 경계에 따라 서버가 합계와 평가 결과를 결정한다`(score: Int, expected: EvaluationResult) {
-        // given
-        val criteria = listOf(criterion(10L, 100))
-        val content = response("""{"criterionId":10,"score":$score,"feedback":"항목 피드백"}""")
-
-        // when
-        val result = validator.validate(content, criteria)
-
-        // then
-        assertThat(result).isEqualTo(EvaluatedAnswerResult(score, expected, "강점", "약점", "개선"))
-    }
+class LlmEvaluationResponseParserTest {
+    private val parser = LlmEvaluationResponseParser()
 
     @Test
-    fun `응답의 항목 순서와 무관하게 ID로 기준별 상한을 적용하고 점수를 합산한다`() {
+    fun `응답의 항목 순서와 점수 및 피드백을 그대로 파싱한다`() {
         // given
-        val criteria = listOf(criterion(10L, 30), criterion(20L, 70))
         val content = response(
             """{"criterionId":20,"score":65,"feedback":"두 번째 항목"},
                 {"criterionId":10,"score":15,"feedback":"첫 번째 항목"}""",
         )
 
         // when
-        val result = validator.validate(content, criteria)
+        val result = parser.parse(content)
 
         // then
-        assertThat(result).isEqualTo(EvaluatedAnswerResult(80, EvaluationResult.PASS, "강점", "약점", "개선"))
+        assertThat(result).isEqualTo(
+            EvaluationProviderResult(
+                listOf(CriterionResult(20L, 65, "두 번째 항목"), CriterionResult(10L, 15, "첫 번째 항목")),
+                "강점", "약점", "개선",
+            ),
+        )
+    }
+
+    @Test
+    fun `중복 ID와 점수 범위는 검사하지 않고 파싱한다`() {
+        // given
+        val content = response(
+            """{"criterionId":30,"score":-1,"feedback":"음수 점수"},
+                {"criterionId":30,"score":101,"feedback":"상한 초과 점수"}""",
+        )
+
+        // when
+        val result = parser.parse(content)
+
+        // then
+        assertThat(result.criteria).containsExactly(
+            CriterionResult(30L, -1, "음수 점수"), CriterionResult(30L, 101, "상한 초과 점수"),
+        )
+    }
+
+    @Test
+    fun `평가 항목이 비어 있어도 배열 형식이면 파싱한다`() {
+        // given
+        val content = response("")
+
+        // when
+        val result = parser.parse(content)
+
+        // then
+        assertThat(result.criteria).isEmpty()
+    }
+
+    @ParameterizedTest
+    @CsvSource("-9223372036854775808, -2147483648", "9223372036854775807, 2147483647")
+    fun `ID는 Long 점수는 Int 범위의 정수를 손실 없이 파싱한다`(id: Long, score: Int) {
+        // given
+        val content = response("""{"criterionId":$id,"score":$score,"feedback":"항목 피드백"}""")
+
+        // when
+        val result = parser.parse(content)
+
+        // then
+        assertThat(result.criteria).containsExactly(CriterionResult(id, score, "항목 피드백"))
     }
 
     @ParameterizedTest
@@ -53,32 +84,35 @@ class EvaluationResponseValidatorTest {
             "\"total\":null,\"totalScore\":\"잘못된 합계\",\"score\":{},\"result\":[]",
         ],
     )
-    fun `LLM이 추가한 합계와 결과 필드는 무시하고 항목 점수로 평가한다`(extraFields: String) {
+    fun `LLM이 추가한 합계와 결과 필드는 무시한다`(extraFields: String) {
         // given
-        val criteria = listOf(criterion(10L, 100))
         val content = response("""{"criterionId":10,"score":49,"feedback":"항목 피드백"}""")
             .dropLast(1) + ",$extraFields}"
 
         // when
-        val result = validator.validate(content, criteria)
+        val result = parser.parse(content)
 
         // then
-        assertThat(result).isEqualTo(EvaluatedAnswerResult(49, EvaluationResult.FAIL, "강점", "약점", "개선"))
+        assertThat(result).isEqualTo(
+            EvaluationProviderResult(listOf(CriterionResult(10L, 49, "항목 피드백")), "강점", "약점", "개선"),
+        )
     }
 
     @ParameterizedTest
     @NullSource
     @ValueSource(
-        strings = ["-1", "101", "80.5", "80.0", "\"80\"", "null", "2147483648", "9223372036854775808", "true", "{}", "[]"],
+        strings = [
+            "80.5", "80.0", "8e1", "\"80\"", "null", "-2147483649", "2147483648",
+            "9223372036854775808", "true", "{}", "[]",
+        ],
     )
-    fun `점수가 누락되거나 정수 범위와 항목 상한을 지키지 않으면 거부한다`(score: String?) {
+    fun `점수가 누락되거나 Int 범위의 정수 타입이 아니면 거부한다`(score: String?) {
         // given
-        val criteria = listOf(criterion(10L, 100))
         val scoreField = score?.let { "\"score\":$it," }.orEmpty()
         val content = response("""{$scoreField"criterionId":10,"feedback":"항목 피드백"}""")
 
         // when
-        val action = { validator.validate(content, criteria) }
+        val action = { parser.parse(content) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(InvalidLlmResponseException::class.java)
@@ -86,37 +120,19 @@ class EvaluationResponseValidatorTest {
 
     @ParameterizedTest
     @NullSource
-    @ValueSource(strings = ["20", "10.5", "10.0", "\"10\"", "null", "9223372036854775808", "true", "{}", "[]"])
-    fun `기준 ID가 누락되거나 알 수 없거나 정수 타입이 아니면 거부한다`(id: String?) {
+    @ValueSource(
+        strings = [
+            "10.5", "10.0", "1e1", "\"10\"", "null", "-9223372036854775809", "9223372036854775808",
+            "true", "{}", "[]",
+        ],
+    )
+    fun `기준 ID가 누락되거나 Long 범위의 정수 타입이 아니면 거부한다`(id: String?) {
         // given
-        val criteria = listOf(criterion(10L, 100))
         val idField = id?.let { "\"criterionId\":$it," }.orEmpty()
         val content = response("""{$idField"score":80,"feedback":"항목 피드백"}""")
 
         // when
-        val action = { validator.validate(content, criteria) }
-
-        // then
-        assertThatThrownBy { action() }.isInstanceOf(InvalidLlmResponseException::class.java)
-    }
-
-    @ParameterizedTest
-    @ValueSource(
-        strings = [
-            "",
-            """{"criterionId":10,"score":30,"feedback":"피드백"}""",
-            """{"criterionId":10,"score":30,"feedback":"피드백"},{"criterionId":10,"score":30,"feedback":"피드백"}""",
-            """{"criterionId":10,"score":30,"feedback":"피드백"},{"criterionId":30,"score":60,"feedback":"피드백"}""",
-            """{"criterionId":10,"score":30,"feedback":"피드백"},{"criterionId":20,"score":60,"feedback":"피드백"},{"criterionId":30,"score":0,"feedback":"피드백"}""",
-        ],
-    )
-    fun `평가 항목이 누락되거나 중복되거나 등록되지 않은 ID를 포함하면 거부한다`(items: String) {
-        // given
-        val criteria = listOf(criterion(10L, 40), criterion(20L, 60))
-        val content = response(items)
-
-        // when
-        val action = { validator.validate(content, criteria) }
+        val action = { parser.parse(content) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(InvalidLlmResponseException::class.java)
@@ -126,10 +142,10 @@ class EvaluationResponseValidatorTest {
     @MethodSource("invalidFeedbackResponses")
     fun `항목과 전체 피드백이 누락되거나 공백이거나 문자열이 아니면 거부한다`(field: String, content: String) {
         // given
-        val criteria = listOf(criterion(10L, 100))
+        val responseContent = content
 
         // when
-        val action = { validator.validate(content, criteria) }
+        val action = { parser.parse(responseContent) }
 
         // then
         assertThatThrownBy { action() }.describedAs("피드백 필드: %s", field)
@@ -140,17 +156,14 @@ class EvaluationResponseValidatorTest {
     @MethodSource("invalidJsonResponses")
     fun `잘못된 JSON과 객체 또는 배열 계약 위반과 중복 키를 거부한다`(content: String) {
         // given
-        val criteria = listOf(criterion(10L, 100))
+        val responseContent = content
 
         // when
-        val action = { validator.validate(content, criteria) }
+        val action = { parser.parse(responseContent) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(InvalidLlmResponseException::class.java)
     }
-
-    private fun criterion(id: Long, maxScore: Int): EvaluationCriterionSpec =
-        EvaluationCriterionSpec(id, "평가 기준", maxScore)
 
     companion object {
         private fun response(items: String = """{"feedback":"항목 피드백","criterionId":10,"score":80}"""): String =

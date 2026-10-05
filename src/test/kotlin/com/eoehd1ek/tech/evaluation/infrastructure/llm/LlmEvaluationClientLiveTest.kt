@@ -1,13 +1,13 @@
 package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
-import com.eoehd1ek.tech.evaluation.application.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.validation.EvaluationProviderResultValidator
 import com.eoehd1ek.tech.question.domain.Question
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
-import tools.jackson.databind.json.JsonMapper
 
 // Opt in only when running this test explicitly; SDK retries may incur additional cost.
 @EnabledIfEnvironmentVariable(named = "RUN_LIVE_LLM_TEST", matches = "true")
@@ -25,7 +25,7 @@ class LlmEvaluationClientLiveTest {
                 .apiKey(settings.getValue("CHAT_API_KEY"))
                 .build())
             .build()
-        val client = LlmEvaluationClient(model)
+        val client = LlmEvaluationClient(model, LlmEvaluationResponseParser())
         val question = Question("데이터베이스 인덱스", "인덱스의 목적과 탐색 원리, 장단점을 설명해주세요.")
         val criteria = listOf(
             EvaluationCriterionSpec(101L, "인덱스의 목적과 조회 성능 향상을 설명한다", 30),
@@ -40,17 +40,13 @@ class LlmEvaluationClientLiveTest {
         """.trimIndent()
 
         // when
-        val content = client.evaluate(question.title, question.content, criteria, answer)
+        val response = client.evaluate(question.title, question.content, criteria, answer)
 
         // then
-        val evaluated = EvaluationResponseValidator().validate(content, criteria)
-        assertThat(evaluated.score).isBetween(0, 100)
-        val root = JsonMapper.builder().build().readTree(content)
-        assertThat(root.propertyNames()).containsExactlyInAnyOrder(
-            "criteria", "strengths", "weaknesses", "improvements",
-        )
-        root.get("criteria").forEach { item ->
-            assertThat(item.propertyNames()).containsExactlyInAnyOrder("criterionId", "score", "feedback")
-        }
+        EvaluationProviderResultValidator().validate(response, criteria)
+        assertThat(response.criteria.sumOf { it.score }).isBetween(0, 100)
+        assertThat(response.strengths).isNotBlank()
+        assertThat(response.weaknesses).isNotBlank()
+        assertThat(response.improvements).isNotBlank()
     }
 }

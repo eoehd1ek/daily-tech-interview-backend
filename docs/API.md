@@ -52,7 +52,7 @@
 
 예시의 메시지 문구 자체는 고정 계약이 아니다. 프론트엔드는 메시지 문자열 대신 HTTP 상태와 `code`로 분기한다. 내부 예외, 스택 트레이스, API 키, LLM 원문 응답과 비공개 평가 기준은 오류 응답에 노출하지 않는다.
 
-백엔드의 비즈니스 예외는 역할에 따라 `ApplicationException` 또는 `DomainException`을 상속하며 공통 부모는 `BusinessException : RuntimeException`이다. 예외는 HTTP 상태를 알지 않고 ErrorType/오류 코드/안전한 메시지를 정의한다. 질문/평가 기록 조회 실패는 ApplicationException의 NOT_FOUND, LLM 평가 실패는 DEPENDENCY_FAILURE다. 모든 Controller에 적용되는 `GlobalExceptionHandler`가 INVALID_INPUT/NOT_FOUND/CONFLICT/DEPENDENCY_FAILURE를 각각 400/404/409/502로 매핑하고 `code`, `message` JSON을 반환한다. JSON 파싱과 DTO/입력 타입/메서드 검증 오류도 공통 처리하며 특정 Controller 선택 조건은 사용하지 않는다. 반환값 검증, DB 및 예상치 못한 오류는 안전한 `500 INTERNAL_SERVER_ERROR`로 처리한다. 내부 LLM 응답 검증의 InvalidLlmResponseException은 Service가 LlmEvaluationFailedException으로 변환한다. Spring의 HTTP 프로토콜 오류(예: 405/415)는 원래 상태 처리를 유지한다. 기존 API 상태/오류 코드/메시지 계약은 변경하지 않는다.
+백엔드의 비즈니스 예외는 역할에 따라 `ApplicationException` 또는 `DomainException`을 상속하며 공통 부모는 `BusinessException : RuntimeException`이다. 예외는 HTTP 상태를 알지 않고 ErrorType/오류 코드/안전한 메시지를 정의한다. 질문/평가 기록 조회 실패는 ApplicationException의 NOT_FOUND, LLM 평가 실패는 DEPENDENCY_FAILURE다. 모든 Controller에 적용되는 `GlobalExceptionHandler`가 INVALID_INPUT/NOT_FOUND/CONFLICT/DEPENDENCY_FAILURE를 각각 400/404/409/502로 매핑하고 `code`, `message` JSON을 반환한다. JSON 파싱과 DTO/입력 타입/메서드 검증 오류도 공통 처리하며 특정 Controller 선택 조건은 사용하지 않는다. 반환값 검증, DB 및 예상치 못한 오류는 안전한 `500 INTERNAL_SERVER_ERROR`로 처리한다. 내부 JSON 파싱의 InvalidLlmResponseException은 LlmEvaluationClient에서 LlmEvaluationFailedException으로 변환하고, 정규화된 응답과 기준의 불일치는 Application Validator가 같은 안전한 평가 실패로 처리한다. Spring의 HTTP 프로토콜 오류(예: 405/415)는 원래 상태 처리를 유지한다. 기존 API 상태/오류 코드/메시지 계약은 변경하지 않는다.
 
 | HTTP 상태 | code | 발생 조건 |
 | --- | --- | --- |
@@ -381,9 +381,9 @@ Core Flow 연결 검증용 데이터는 스키마 마이그레이션 `V1.0.0__cr
 
 ### 내부 평가 구현 상태
 
-내부 EvaluationService와 기본 Spring AI 클라이언트, 엄격한 JSON 검증/합산/판정은 구현되었다. app.evaluation 설정, EvaluationConfig/EvaluationProperties, 호출별 timeout 인자, Service 재시도 루프는 제거했다. endpoint/model/key의 기존 환경변수 매핑은 유지한다.
+내부 EvaluationService와 기본 Spring AI 클라이언트, 엄격한 JSON 검증/합산/판정은 구현되었다. JSON 형식은 Infrastructure의 LlmEvaluationResponseParser, 기준과의 일관성은 Application의 EvaluationProviderResultValidator, 판정은 Domain의 EvaluationResult.fromScore로 분리했다. Service는 EvaluationProvider 포트와 EvaluationProviderResult만 사용하며 Jackson/JsonNode/Spring AI/LLM 구현을 참조하지 않는다. 검증된 점수 합산은 Service 안에 유지하고 별도 Calculator/Factory/Mapper 계층은 추가하지 않는다. 저장 기준의 배점 합계가 100이라는 기존 전제는 그대로다. app.evaluation 설정, EvaluationConfig/EvaluationProperties, 호출별 timeout 인자, Service 재시도 루프는 제거했다. endpoint/model/key의 기존 환경변수 매핑은 유지한다.
 
-전체 평가 작업은 DB 트랜잭션으로 감싸지 않고 현재 호출 스레드에서 동기 수행한다. LlmEvaluationClient는 기본 OpenAiChatModel을 직접 주입하고 기존 옵션에서 네이티브 Schema만 설정한다. 라이브러리 최종 호출 실패/빈 응답은 클라이언트에서, 로컬 검증 실패는 Service에서 안전한 평가 실패 예외로 변환한다. 질문 없음/DB 오류는 그대로 전달한다. 새로운 abstraction/wrapper는 없다.
+전체 평가 작업은 DB 트랜잭션으로 감싸지 않고 현재 호출 스레드에서 동기 수행한다. LlmEvaluationClient는 EvaluationProvider를 구현하고 기본 OpenAiChatModel과 Parser를 주입받아 정규화된 응답을 반환한다. 기존 옵션에서 네이티브 Schema만 설정하며 호출 실패/빈 응답/파싱 실패는 클라이언트가 안전한 평가 실패로 변환한다. 개수/ID 대응·중복/배점 범위 실패는 Application Validator가 처리한다. 질문 없음/DB 오류는 그대로 전달하며 추가 재시도나 fallback은 없다.
 
 테스트는 모델 결과를 mock하여 애플리케이션의 프롬프트/Schema/Service/오류 계약을 확인하고 로컬 JSON 검증을 직접 테스트한다. 라이브러리 timeout/retry 내부를 재구현/테스트하지 않으며 실제 CODEX_LB/OpenRouter 호출도 하지 않는다. 기본 전송의 즉시 취소/원격 생성 중단은 보장하지 않는다. 공개 POST는 검증된 완료 결과만 저장하며 DB 저장 실패 시 LLM을 재호출하지 않는다. 프론트 180초 대기 종료/취소 뒤에도 서버가 저장할 수 있고 재제출은 별도 평가/기록이다.
 
