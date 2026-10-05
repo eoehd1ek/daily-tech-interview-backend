@@ -31,7 +31,7 @@ class AdminQuestionControllerTest {
     @Test
     fun `질문 생성은 인증 없이 저장된 상세와 생성 상태 및 Location을 반환한다`() {
         // given
-        val request = AdminQuestionRequest(" 제목 ", "본문\n원문", listOf(AdminCriterionRequest("기준", 100)))
+        val request = AdminQuestionRequest(" 제목 ", "본문\n원문", listOf(AdminCriterionRequest("기준", 100, 1)))
         val expected = AdminQuestionResponse(10L, request.title, request.content,
             listOf(AdminCriterionResponse(20L, "기준", 100, 1)))
         given(service.create(request)).willReturn(expected)
@@ -53,7 +53,7 @@ class AdminQuestionControllerTest {
     fun `질문 수정은 입력 상한을 허용하고 수정된 상세를 반환한다`() {
         // given
         val request = AdminQuestionRequest("가".repeat(200), "나".repeat(10000),
-            List(10) { AdminCriterionRequest("다".repeat(1000), 10) })
+            List(10) { AdminCriterionRequest("다".repeat(1000), 10, it + 1) })
         val expected = AdminQuestionResponse(10L, request.title, request.content,
             request.criteria.mapIndexed { index, item ->
                 AdminCriterionResponse(20L + index, requireNotNull(item).content, item.maxScore, index + 1)
@@ -98,7 +98,7 @@ class AdminQuestionControllerTest {
     @ValueSource(strings = ["0", "-1", "9007199254740992", "abc"])
     fun `잘못된 수정 ID는 Service 호출 없이 요청 오류를 반환한다`(id: String) {
         // given
-        val body = """{"title":"제목","content":"본문","criteria":[{"content":"기준","maxScore":100}]}"""
+        val body = """{"title":"제목","content":"본문","criteria":[{"content":"기준","maxScore":100,"displayOrder":1}]}"""
 
         // when
         val response = mockMvc.perform(put("/api/admin/questions/$id")
@@ -114,7 +114,7 @@ class AdminQuestionControllerTest {
     @Test
     fun `존재하지 않는 질문 수정은 질문 없음 오류를 반환한다`() {
         // given
-        val request = AdminQuestionRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100)))
+        val request = AdminQuestionRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 1)))
         given(service.update(10L, request)).willThrow(QuestionNotFoundException())
 
         // when
@@ -131,7 +131,7 @@ class AdminQuestionControllerTest {
     @Test
     fun `저장 실패는 안전한 서버 오류를 반환한다`() {
         // given
-        val request = AdminQuestionRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100)))
+        val request = AdminQuestionRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 1)))
         given(service.create(request)).willThrow(IllegalStateException("private database details"))
 
         // when
@@ -150,7 +150,7 @@ class AdminQuestionControllerTest {
         @JvmStatic
         fun invalidBodies(): List<String> {
             val mapper = ObjectMapper()
-            val criterion = mapOf("content" to "기준", "maxScore" to 100)
+            val criterion = mapOf("content" to "기준", "maxScore" to 100, "displayOrder" to 1)
             val valid = mapOf("title" to "제목", "content" to "본문", "criteria" to listOf(criterion))
             val bodies = mutableListOf<Map<String, Any?>>()
             for ((field, limit) in listOf("title" to 200, "content" to 10000)) {
@@ -172,6 +172,11 @@ class AdminQuestionControllerTest {
                 bodies += valid + ("criteria" to listOf(criterion + ("maxScore" to value)))
             }
             bodies += valid + ("criteria" to listOf(criterion, criterion))
+            bodies += valid + ("criteria" to listOf(criterion - "displayOrder"))
+            bodies += valid + ("criteria" to listOf(criterion + ("displayOrder" to null)))
+            bodies += valid + ("criteria" to listOf(
+                criterion + ("maxScore" to 50), criterion + ("maxScore" to 50),
+            ))
             return bodies.map(mapper::writeValueAsString)
         }
     }

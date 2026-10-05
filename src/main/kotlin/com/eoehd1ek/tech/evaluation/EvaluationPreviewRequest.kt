@@ -1,12 +1,14 @@
-package com.eoehd1ek.tech.question
+package com.eoehd1ek.tech.evaluation
 
+import com.eoehd1ek.tech.question.AdminCriterionRequest
+import com.eoehd1ek.tech.question.AdminQuestionRequest
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 
-data class AdminQuestionRequest(
+data class EvaluationPreviewRequest(
     @field:NotBlank
     @field:Size(max = 200)
     val title: String,
@@ -18,11 +20,12 @@ data class AdminQuestionRequest(
     @field:Valid
     @field:Size(min = 1, max = 10)
     val criteria: List<AdminCriterionRequest?>,
+
+    @field:NotBlank
+    @field:Size(max = 3000)
+    val answer: String,
 ) {
-    @AssertTrue(message = "평가 기준 배점 합은 100이고 순서는 중복이 없어야 합니다.")
+    @AssertTrue
     @JsonIgnore
-    fun isValidCriteria(): Boolean =
-        criteria.all { it != null } &&
-                criteria.sumOf { it?.maxScore?.toLong() ?: 0L } == 100L &&
-                criteria.map { it?.displayOrder }.distinct().size == criteria.size
+    fun isValidCriteria(): Boolean = AdminQuestionRequest(title, content, criteria).isValidCriteria()
 }

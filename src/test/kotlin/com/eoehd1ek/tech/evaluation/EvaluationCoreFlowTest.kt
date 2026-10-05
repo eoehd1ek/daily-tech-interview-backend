@@ -122,9 +122,9 @@ class EvaluationCoreFlowTest {
         // given
         val client = HttpClient.newHttpClient()
         val base = "http://localhost:$port"
-        val original = AdminQuestionRequest("생성 제목", "생성 본문", listOf(AdminCriterionRequest("기존 기준", 100)))
+        val original = AdminQuestionRequest("생성 제목", "생성 본문", listOf(AdminCriterionRequest("기존 기준", 100, 10)))
         val changed = AdminQuestionRequest("수정 제목", "수정 본문", listOf(
-            AdminCriterionRequest("새 첫 기준", 40), AdminCriterionRequest("새 둘째 기준", 60),
+            AdminCriterionRequest("새 둘째 기준", 60, 20), AdminCriterionRequest("새 첫 기준", 40, -5),
         ))
         val createRequest = HttpRequest.newBuilder(URI.create("$base/api/admin/questions"))
             .header("Content-Type", "application/json")
@@ -158,7 +158,7 @@ class EvaluationCoreFlowTest {
         val criteria = criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)
         assertThat(criteria.map { it.content }).containsExactly("새 첫 기준", "새 둘째 기준")
         assertThat(criteria.map { it.maxScore }).containsExactly(40, 60)
-        assertThat(criteria.map { it.displayOrder }).containsExactly(1, 2)
+        assertThat(criteria.map { it.displayOrder }).containsExactly(-5, 20)
         assertThat(detail.statusCode()).isEqualTo(200)
         val detailBody = objectMapper.readTree(detail.body())
         assertThat(detailBody.propertyNames()).containsExactlyInAnyOrder("id", "title", "content")

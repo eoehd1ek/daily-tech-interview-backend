@@ -5,6 +5,7 @@ import com.eoehd1ek.tech.question.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.Question
 import com.eoehd1ek.tech.question.QuestionNotFoundException
 import com.eoehd1ek.tech.question.QuestionRepository
+import com.eoehd1ek.tech.question.AdminCriterionRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
@@ -53,12 +54,13 @@ class EvaluationServiceTest {
     private val criteria = listOf(EvaluationCriterion(questionId, "테스트 기준", 100, 1).apply {
         ReflectionTestUtils.setField(this, "id", 20L)
     })
+    private val input = criteria.map(EvaluationCriterionInput::from)
 
     @Test
     fun `질문과 기준을 한번 조회하고 완료 결과를 저장하여 반환 ID와 감사 시각을 응답한다`() {
         // given
         givenRepositories()
-        given(llmClient.evaluate(question, criteria, answer)).willReturn("""
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn("""
             {"criteria":[{"criterionId":20,"score":85,"feedback":"잘 설명했습니다."}],
              "strengths":"장점", "weaknesses":"단점", "improvements":"개선점"}
         """.trimIndent())
@@ -81,7 +83,7 @@ class EvaluationServiceTest {
         assertThat(captor.value.createdAt).isNull()
         verify(questionRepository).findById(questionId)
         verify(criterionRepository).findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)
-        verify(llmClient).evaluate(question, criteria, answer)
+        verify(llmClient).evaluate(question.title, question.content, input, answer)
         verifyNoMoreInteractions(questionRepository, criterionRepository, llmClient, attemptRepository)
     }
 
@@ -90,14 +92,14 @@ class EvaluationServiceTest {
     fun `잘못된 LLM 응답은 재호출 없이 안전한 평가 실패로 처리한다`(content: String) {
         // given
         givenRepositories()
-        given(llmClient.evaluate(question, criteria, answer)).willReturn(content)
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn(content)
 
         // when
         val action = { service.submit(questionId, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(LlmEvaluationFailedException::class.java).hasNoCause()
-        verify(llmClient).evaluate(question, criteria, answer)
+        verify(llmClient).evaluate(question.title, question.content, input, answer)
         verifyNoMoreInteractions(llmClient)
         verifyNoInteractions(attemptRepository)
     }
@@ -106,14 +108,14 @@ class EvaluationServiceTest {
     fun `LLM 호출 실패는 애플리케이션 재호출 없이 전달한다`() {
         // given
         givenRepositories()
-        given(llmClient.evaluate(question, criteria, answer)).willThrow(LlmEvaluationFailedException())
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willThrow(LlmEvaluationFailedException())
 
         // when
         val action = { service.submit(questionId, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(LlmEvaluationFailedException::class.java)
-        verify(llmClient).evaluate(question, criteria, answer)
+        verify(llmClient).evaluate(question.title, question.content, input, answer)
         verifyNoMoreInteractions(llmClient)
         verifyNoInteractions(attemptRepository)
     }
@@ -171,7 +173,7 @@ class EvaluationServiceTest {
         assertThat(captor.allValues[0]).isNotSameAs(captor.allValues[1])
         verify(questionRepository, times(2)).findById(questionId)
         verify(criterionRepository, times(2)).findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)
-        verify(llmClient, times(2)).evaluate(question, criteria, answer)
+        verify(llmClient, times(2)).evaluate(question.title, question.content, input, answer)
     }
 
     @Test
@@ -188,7 +190,7 @@ class EvaluationServiceTest {
         // then
         assertThat(exception).isSameAs(failure)
         verify(attemptRepository).save(any(EvaluationAttempt::class.java))
-        verify(llmClient).evaluate(question, criteria, answer)
+        verify(llmClient).evaluate(question.title, question.content, input, answer)
         verifyNoMoreInteractions(llmClient, attemptRepository)
     }
 
@@ -206,7 +208,7 @@ class EvaluationServiceTest {
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(IllegalStateException::class.java)
-        verify(llmClient).evaluate(question, criteria, answer)
+        verify(llmClient).evaluate(question.title, question.content, input, answer)
         verifyNoMoreInteractions(llmClient)
     }
 
@@ -295,10 +297,59 @@ class EvaluationServiceTest {
     }
 
     private fun givenValidEvaluation() {
-        given(llmClient.evaluate(question, criteria, answer)).willReturn("""
+        given(llmClient.evaluate(question.title, question.content, input, answer)).willReturn("""
             {"criteria":[{"criterionId":20,"score":85,"feedback":"잘 설명했습니다."}],
              "strengths":"장점", "weaknesses":"단점", "improvements":"개선점"}
         """.trimIndent())
+    }
+
+    @Test
+    fun `저장 전 평가는 지정 순서의 현재 입력으로 평가하고 Repository를 사용하지 않는다`() {
+        // given
+        val request = EvaluationPreviewRequest(" 미저장 제목 ", "미저장 본문", listOf(
+            AdminCriterionRequest("나중 기준", 60, 20), AdminCriterionRequest("먼저 기준", 40, -5),
+        ), answer)
+        val previewCriteria = listOf(
+            EvaluationCriterionInput(1L, "먼저 기준", 40), EvaluationCriterionInput(2L, "나중 기준", 60),
+        )
+        given(llmClient.evaluate(request.title, request.content, previewCriteria, answer)).willReturn("""
+            {"criteria":[{"criterionId":2,"score":50,"feedback":"두번째"},
+                         {"criterionId":1,"score":30,"feedback":"첫번째"}],
+             "strengths":"장점", "weaknesses":"단점", "improvements":"개선점"}
+        """.trimIndent())
+
+        // when
+        val result = service.preview(request)
+
+        // then
+        assertThat(result).isEqualTo(EvaluationPreviewResponse(
+            request.title, answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+        ))
+        verify(llmClient).evaluate(request.title, request.content, previewCriteria, answer)
+        verifyNoInteractions(questionRepository, criterionRepository, attemptRepository)
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = [true, false])
+    fun `저장 전 평가의 모델 오류와 잘못된 응답은 저장 없이 평가 실패로 처리한다`(callFails: Boolean) {
+        // given
+        val request = EvaluationPreviewRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 0)), answer)
+        val criteria = listOf(EvaluationCriterionInput(1L, "기준", 100))
+        if (callFails) {
+            given(llmClient.evaluate(request.title, request.content, criteria, answer))
+                .willThrow(LlmEvaluationFailedException())
+        } else {
+            given(llmClient.evaluate(request.title, request.content, criteria, answer)).willReturn("{}")
+        }
+
+        // when
+        val action = { service.preview(request) }
+
+        // then
+        assertThatThrownBy { action() }.isInstanceOf(LlmEvaluationFailedException::class.java)
+        verify(llmClient).evaluate(request.title, request.content, criteria, answer)
+        verifyNoMoreInteractions(llmClient)
+        verifyNoInteractions(questionRepository, criterionRepository, attemptRepository)
     }
 
     private fun givenRepositories() {

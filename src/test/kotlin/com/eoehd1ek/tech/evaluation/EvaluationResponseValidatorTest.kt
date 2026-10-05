@@ -1,6 +1,5 @@
 package com.eoehd1ek.tech.evaluation
 
-import com.eoehd1ek.tech.question.EvaluationCriterion
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -10,7 +9,6 @@ import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.NullSource
 import org.junit.jupiter.params.provider.ValueSource
-import org.springframework.test.util.ReflectionTestUtils
 
 class EvaluationResponseValidatorTest {
     private val validator = EvaluationResponseValidator()
@@ -148,11 +146,8 @@ class EvaluationResponseValidatorTest {
         assertThatThrownBy { action() }.isInstanceOf(InvalidLlmResponseException::class.java)
     }
 
-    private fun criterion(id: Long, maxScore: Int): EvaluationCriterion {
-        val criterion = EvaluationCriterion(questionId = 1L, content = "평가 기준", maxScore = maxScore, displayOrder = 1)
-        ReflectionTestUtils.setField(criterion, "id", id)
-        return criterion
-    }
+    private fun criterion(id: Long, maxScore: Int): EvaluationCriterionInput =
+        EvaluationCriterionInput(id, "평가 기준", maxScore)
 
     companion object {
         private fun response(items: String = """{"feedback":"항목 피드백","criterionId":10,"score":80}"""): String =

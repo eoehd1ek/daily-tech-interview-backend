@@ -1,13 +1,11 @@
 package com.eoehd1ek.tech.evaluation
 
-import com.eoehd1ek.tech.question.EvaluationCriterion
 import com.eoehd1ek.tech.question.Question
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
-import org.springframework.test.util.ReflectionTestUtils
 import tools.jackson.databind.json.JsonMapper
 
 // Opt in only when running this test explicitly; SDK retries may incur additional cost.
@@ -29,13 +27,10 @@ class LlmEvaluationClientLiveTest {
         val client = LlmEvaluationClient(model)
         val question = Question("데이터베이스 인덱스", "인덱스의 목적과 탐색 원리, 장단점을 설명해주세요.")
         val criteria = listOf(
-            EvaluationCriterion(1L, "인덱스의 목적과 조회 성능 향상을 설명한다", 30, 1),
-            EvaluationCriterion(1L, "B-Tree 기반 탐색 원리를 설명한다", 30, 2),
-            EvaluationCriterion(1L, "저장 공간과 데이터 변경 시 유지 비용을 설명한다", 40, 3),
+            EvaluationCriterionInput(101L, "인덱스의 목적과 조회 성능 향상을 설명한다", 30),
+            EvaluationCriterionInput(102L, "B-Tree 기반 탐색 원리를 설명한다", 30),
+            EvaluationCriterionInput(103L, "저장 공간과 데이터 변경 시 유지 비용을 설명한다", 40),
         )
-        criteria.forEachIndexed { index, criterion ->
-            ReflectionTestUtils.setField(criterion, "id", 101L + index)
-        }
         val answer = """
             인덱스는 전체 행을 순회하지 않고 필요한 데이터를 빠르게 찾도록 돕는 자료구조입니다.
             B-Tree는 정렬된 키와 자식 포인터를 이용해 루트부터 탐색 범위를 좁혀 데이터를 찾습니다.
@@ -44,7 +39,7 @@ class LlmEvaluationClientLiveTest {
         """.trimIndent()
 
         // when
-        val content = client.evaluate(question, criteria, answer)
+        val content = client.evaluate(question.title, question.content, criteria, answer)
 
         // then
         val evaluated = EvaluationResponseValidator().validate(content, criteria)

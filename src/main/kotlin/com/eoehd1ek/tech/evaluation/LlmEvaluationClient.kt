@@ -1,7 +1,5 @@
 package com.eoehd1ek.tech.evaluation
 
-import com.eoehd1ek.tech.question.EvaluationCriterion
-import com.eoehd1ek.tech.question.Question
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
@@ -15,12 +13,12 @@ class LlmEvaluationClient(
 ) {
     private val mapper = JsonMapper.builder().build()
 
-    fun evaluate(question: Question, criteria: List<EvaluationCriterion>, answer: String): String {
+    fun evaluate(title: String, content: String, criteria: List<EvaluationCriterionInput>, answer: String): String {
         val data = mapper.writeValueAsString(
             mapOf(
-                "question" to mapOf("title" to question.title, "content" to question.content),
+                "question" to mapOf("title" to title, "content" to content),
                 "criteria" to criteria.map {
-                    mapOf("criterionId" to checkNotNull(it.id), "content" to it.content, "maxScore" to it.maxScore)
+                    mapOf("criterionId" to it.id, "content" to it.content, "maxScore" to it.maxScore)
                 },
                 "answer" to answer,
             ),

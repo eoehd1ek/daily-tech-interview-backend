@@ -13,4 +13,6 @@ data class AdminCriterionRequest(
     @field:Min(1)
     @field:Max(100)
     val maxScore: Int,
+
+    val displayOrder: Int,
 )

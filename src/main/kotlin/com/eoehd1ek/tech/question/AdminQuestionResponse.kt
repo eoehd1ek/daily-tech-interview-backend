@@ -12,7 +12,7 @@ data class AdminQuestionResponse(
                 id = checkNotNull(question.id),
                 title = question.title,
                 content = question.content,
-                criteria = criteria.map {
+                criteria = criteria.sortedWith(compareBy<EvaluationCriterion> { it.displayOrder }.thenBy { it.id }).map {
                     AdminCriterionResponse(checkNotNull(it.id), it.content, it.maxScore, it.displayOrder)
                 },
             )

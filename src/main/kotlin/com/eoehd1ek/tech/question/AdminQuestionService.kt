@@ -27,8 +27,8 @@ class AdminQuestionService(
     }
 
     private fun saveCriteria(questionId: Long, request: AdminQuestionRequest): List<EvaluationCriterion> =
-        criterionRepository.saveAll(request.criteria.mapIndexed { index, item ->
+        criterionRepository.saveAll(request.criteria.map { item ->
             val criterion = requireNotNull(item)
-            EvaluationCriterion(questionId, criterion.content, criterion.maxScore, index + 1)
+            EvaluationCriterion(questionId, criterion.content, criterion.maxScore, criterion.displayOrder)
         })
 }
