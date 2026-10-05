@@ -52,7 +52,7 @@
 
 예시의 메시지 문구 자체는 고정 계약이 아니다. 프론트엔드는 메시지 문자열 대신 HTTP 상태와 `code`로 분기한다. 내부 예외, 스택 트레이스, API 키, LLM 원문 응답과 비공개 평가 기준은 오류 응답에 노출하지 않는다.
 
-백엔드의 비즈니스 예외는 `BusinessException : RuntimeException`을 상속한다. `QuestionNotFoundException`은 상태 `404`, 코드 `QUESTION_NOT_FOUND`, 안전한 사용자 메시지를 정의한다. 모든 Controller에 적용되는 `GlobalExceptionHandler`의 `@RestControllerAdvice`에서 BusinessException, JSON 본문 파싱, DTO/입력 타입/메서드 검증 오류를 공통 변환한다. 특정 Controller 선택 조건은 사용하지 않으며 입력 검증 메시지는 질문에 한정하지 않는다. 반환값 검증, DB 및 예상치 못한 애플리케이션 오류는 안전한 `500 INTERNAL_SERVER_ERROR`로 처리한다. Spring의 HTTP 프로토콜 오류(예: 405/415)는 원래 상태 처리를 유지하며 이 문서의 API 오류 계약을 확대하지 않는다.
+백엔드의 비즈니스 예외는 역할에 따라 `ApplicationException` 또는 `DomainException`을 상속하며 공통 부모는 `BusinessException : RuntimeException`이다. 예외는 HTTP 상태를 알지 않고 ErrorType/오류 코드/안전한 메시지를 정의한다. 질문/평가 기록 조회 실패는 ApplicationException의 NOT_FOUND, LLM 평가 실패는 DEPENDENCY_FAILURE다. 모든 Controller에 적용되는 `GlobalExceptionHandler`가 INVALID_INPUT/NOT_FOUND/CONFLICT/DEPENDENCY_FAILURE를 각각 400/404/409/502로 매핑하고 `code`, `message` JSON을 반환한다. JSON 파싱과 DTO/입력 타입/메서드 검증 오류도 공통 처리하며 특정 Controller 선택 조건은 사용하지 않는다. 반환값 검증, DB 및 예상치 못한 오류는 안전한 `500 INTERNAL_SERVER_ERROR`로 처리한다. 내부 LLM 응답 검증의 InvalidLlmResponseException은 Service가 LlmEvaluationFailedException으로 변환한다. Spring의 HTTP 프로토콜 오류(예: 405/415)는 원래 상태 처리를 유지한다. 기존 API 상태/오류 코드/메시지 계약은 변경하지 않는다.
 
 | HTTP 상태 | code | 발생 조건 |
 | --- | --- | --- |

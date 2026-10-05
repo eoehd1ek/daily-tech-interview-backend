@@ -1,9 +1,8 @@
 package com.eoehd1ek.tech.common.presentation.exception
 
-import org.springframework.http.HttpStatus
-
 abstract class BusinessException(
-    val status: HttpStatus,
+    val type: ErrorType,
     val code: String,
     override val message: String,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)

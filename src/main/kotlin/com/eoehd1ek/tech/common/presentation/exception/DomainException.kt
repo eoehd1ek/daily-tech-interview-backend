@@ -5,4 +5,4 @@ abstract class DomainException(
     code: String,
     message: String,
     cause: Throwable? = null,
-) : BusinessExceptionNew(type, code, message, cause)
+) : BusinessException(type, code, message, cause)

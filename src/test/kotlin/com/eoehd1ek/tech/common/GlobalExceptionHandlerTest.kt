@@ -1,6 +1,8 @@
 package com.eoehd1ek.tech.common
 
-import com.eoehd1ek.tech.common.presentation.exception.BusinessException
+import com.eoehd1ek.tech.common.presentation.exception.ApplicationException
+import com.eoehd1ek.tech.common.presentation.exception.DomainException
+import com.eoehd1ek.tech.common.presentation.exception.ErrorType
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
@@ -14,7 +16,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpHeaders
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.test.web.servlet.MockMvc
@@ -38,7 +39,7 @@ class GlobalExceptionHandlerTest {
     private lateinit var objectMapper: ObjectMapper
 
     @Test
-    fun `질문 외 Controller의 비즈니스 예외도 정의한 상태와 코드로 반환한다`() {
+    fun `애플리케이션 예외는 오류 유형을 HTTP 상태로 변환하고 코드와 메시지를 반환한다`() {
         // given
         val request = get("/test/errors/business")
 
@@ -53,6 +54,22 @@ class GlobalExceptionHandlerTest {
         assertThat(body.propertyNames()).containsExactlyInAnyOrder("code", "message")
         assertThat(body.get("code").asString()).isEqualTo("TEST_BUSINESS_ERROR")
         assertThat(body.get("message").asString()).isEqualTo("테스트 비즈니스 오류입니다.")
+    }
+
+    @Test
+    fun `도메인 예외도 오류 유형을 HTTP 상태로 변환하고 코드와 메시지를 반환한다`() {
+        // given
+        val request = get("/test/errors/domain")
+
+        // when
+        val response = mockMvc.perform(request).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(400)
+        val body = objectMapper.readTree(response.contentAsByteArray)
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("code", "message")
+        assertThat(body.get("code").asString()).isEqualTo("TEST_DOMAIN_ERROR")
+        assertThat(body.get("message").asString()).isEqualTo("테스트 도메인 오류입니다.")
     }
 
     @ParameterizedTest
@@ -216,7 +233,10 @@ class GlobalExceptionHandlerTest {
     @RestController
     class TestController {
         @GetMapping("/test/errors/business")
-        fun businessError(): String = throw TestBusinessException()
+        fun businessError(): String = throw TestApplicationException()
+
+        @GetMapping("/test/errors/domain")
+        fun domainError(): String = throw TestDomainException()
 
         @GetMapping("/test/errors/input/{id}")
         fun input(@PathVariable("id") @Min(1) id: Long): Long = id
@@ -244,9 +264,15 @@ class GlobalExceptionHandlerTest {
 
     data class TestRequest(@field:NotBlank val answer: String? = null)
 
-    private class TestBusinessException : BusinessException(
-        status = HttpStatus.CONFLICT,
+    private class TestApplicationException : ApplicationException(
+        type = ErrorType.CONFLICT,
         code = "TEST_BUSINESS_ERROR",
         message = "테스트 비즈니스 오류입니다.",
+    )
+
+    private class TestDomainException : DomainException(
+        type = ErrorType.INVALID_INPUT,
+        code = "TEST_DOMAIN_ERROR",
+        message = "테스트 도메인 오류입니다.",
     )
 }

@@ -1,7 +1,6 @@
 package com.eoehd1ek.tech.common.presentation
 
 import com.eoehd1ek.tech.common.presentation.exception.BusinessException
-import com.eoehd1ek.tech.common.presentation.exception.BusinessExceptionNew
 import com.eoehd1ek.tech.common.presentation.exception.ErrorType
 import com.eoehd1ek.tech.common.presentation.response.ErrorResponse
 import org.springframework.http.HttpStatus
@@ -43,9 +42,9 @@ class GlobalExceptionHandler {
                 .body(invalidRequestResponse)
         }
 
-    @ExceptionHandler(BusinessExceptionNew::class)
+    @ExceptionHandler(BusinessException::class)
     fun handleBusinessException(
-        exception: BusinessExceptionNew
+        exception: BusinessException
     ): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(exception.type.toHttpStatus())
             .body(

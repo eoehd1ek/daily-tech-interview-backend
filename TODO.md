@@ -8,7 +8,7 @@
 - 1~9단계에는 관리자/인증 기능을 포함하지 않았다. 10~15단계는 로그인 없는 관리자 질문 생성·수정·저장 전 평가 테스트만 다룬다. Spring Security + 아이디·비밀번호 인증은 MVP 이후 별도 계획이다. 로그인 사용자 기록과 관리자 사용자 평가 기록 조회는 이번 범위에 포함하지 않는다.
 - 기존 Kotlin, Java 25, Spring Boot 4, Spring AI 2, Spring Data JPA, PostgreSQL, Flyway 구성을 활용한다. 의존성이나 버전을 임의로 변경하지 않는다.
 - Controller / Service / Repository를 기본으로 사용하고 API에 Entity를 직접 노출하지 않는다.
-- 비즈니스 예외는 `BusinessException : RuntimeException`을 상속하고 HTTP 상태/오류 코드/안전한 사용자 메시지를 정의한다. 선택 조건 없는 `@RestControllerAdvice`의 `GlobalExceptionHandler`에서 공통 처리하며 특정 Controller 전용 Advice는 사용하지 않는다. 알 수 없는 예외/DB/LLM 오류의 전체 처리는 8단계에서 완성한다.
+- 비즈니스 예외는 ApplicationException 또는 DomainException을 거쳐 BusinessException : RuntimeException을 상속하고 ErrorType/오류 코드/안전한 메시지를 정의한다. 예외에 HTTP 상태/Spring HTTP 의존성을 두지 않으며 GlobalExceptionHandler에서 ErrorType을 HTTP 상태로 매핑한다. 선택 조건 없는 @RestControllerAdvice를 유지하고 특정 Controller 전용 Advice는 사용하지 않는다.
 - 기본 타입은 Kotlin/JPA 기본 매핑을 사용하며, 일반 문자열에 `columnDefinition`을 지정하지 않는다. `jsonb`처럼 특정 DB 타입이 꼭 필요한 경우에만 사용 이유를 확인한다. 실제 DB 타입은 Flyway에서 관리한다.
 - `updatable = false`는 사용하지 않는다. 생성 시각을 포함한 필드의 변경 정책을 JPA 매핑의 업데이트 제한으로 강제하지 않는다.
 - Flyway 파일명에는 항상 세 버전 요소를 명시한다: `V<major>.<minor>.<patch>__<description>.sql`. 스키마는 `V1.0.0`, 같은 주 버전의 초기 데이터는 `V1.0.1`로 작성한다. 이미 적용된 DB 이력을 자동 수정하지 않는다.
@@ -139,6 +139,10 @@ POST 단계 검증(2026-10-05): Windows `.\gradlew.bat clean build` 성공, 전�
 GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개 테스트 통과. EvaluationService 16개와 EvaluationAttemptController 49개로 POST 회귀/GET 성공·ID 경계·404·DB/참조 500을 검증했다. GET 메서드에만 짧은 readOnly 트랜잭션을 적용한다. 제목 스냅샷이나 연관관계/새 스키마/의존성은 추가하지 않았다.
 
 ## 8. LLM 실패 및 공통 예외 처리
+
+예외 계층 후속 정리: 마지막 커밋의 BusinessExceptionNew/ApplicationException/DomainException/ErrorType을 사용한다. 질문/평가 기록 없음과 LLM 평가 실패는 ApplicationException이며 도메인 규칙 위반에만 DomainException을 사용한다. 구 BusinessException과 HTTP 상태 의존성은 제거하고 Handler에서만 400/404/409/502를 매핑한다. 내부 InvalidLlmResponseException은 기존 Service의 안전한 평가 실패 변환을 유지한다. 아래 초기 구현 기록의 구 계층 설명은 당시 상태이며 현재 API 계약은 유지한다.
+
+후속 검증: `.\gradlew.bat clean build`가 통과했다. 공통 Handler 테스트의 ApplicationException/CONFLICT와 DomainException/INVALID_INPUT 매핑, 기존 질문·평가 기록 404/LLM 실패 502/내부 오류 500/405·415 보존 회귀를 확인했다. src의 구 BusinessException 참조와 예외 클래스의 Spring HTTP 의존성은 없다. 새로운 의존성/HTTP 계약 변경/실제 LLM 호출은 추가하지 않았다.
 
 - [x] `BusinessException : RuntimeException`과 이를 상속하는 `QuestionNotFoundException`, Controller 선택 조건 없는 `GlobalExceptionHandler`로 공통 예외 처리 기반 구현. BusinessException/입력 타입/메서드 검증 오류만 우선 처리하며 전체 DB/LLM/예상치 못한 오류 처리는 아래 항목에서 완성.
 
