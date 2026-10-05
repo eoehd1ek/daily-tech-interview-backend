@@ -28,7 +28,7 @@
 - 인증/인가, Redis, 캐싱, RAG, Embedding, Vector Store, 메시지 큐, Microservice, 불필요한 성능 최적화는 추가하지 않는다.
 - 프론트엔드 화면 구현은 별도 저장소의 작업이다. 여기에는 백엔드 구현과 연결 검증에 필요한 항목만 둔다.
 
-현재 Question/EvaluationCriterion/EvaluationAttempt 모델과 Repository, 마이그레이션, JPA Auditing 및 PostgreSQL 테스트가 구현되어 있다. 질문 목록/상세 API와 라이브러리 기본값을 사용하는 내부 LLM 평가, 공통 `400`/`404`/평가 실패 `502` 기반도 구현되어 있다. 평가 제출/결과 조회 API와 기록 저장 연결은 미구현이다. 스키마는 Flyway로 관리하고 테스트에서는 `validate`로 매핑을 확인한다.
+현재 Question/EvaluationCriterion/EvaluationAttempt 모델과 Repository, 마이그레이션, JPA Auditing 및 PostgreSQL 테스트가 구현되어 있다. 질문 목록/상세, 답변 제출·평가·완료 기록 저장, 저장 결과 조회와 공통 `400`/`404`/`502`/`500` 처리가 구현되어 있다. 외부 LLM을 대체한 실제 HTTP/commit 후 재조회도 검증했다. 실제 브라우저와 유료 공급자 연결은 미검증이다. 스키마는 Flyway로 관리하고 테스트에서는 `validate`로 매핑을 확인한다.
 
 ## 1. Question 및 평가 기준 모델
 
@@ -111,23 +111,28 @@
 
 ## 6. 답변 제출 및 평가 API
 
-- [ ] 답변 최대 길이/요청 크기 제한을 확인하고 Request DTO 검증 규칙과 계약에 반영.
-- [ ] `POST /api/questions/{questionId}/evaluation-attempts` 구현.
-- [ ] 요청 검증 → QuestionRepository로 질문 조회 → EvaluationCriterionRepository로 기준 목록 조회 → 평가 → LLM 응답 검증/합산/판정 → 완료 기록 저장을 하나의 동기식 요청으로 연결. 저장 기준의 도메인 규칙은 재검증하지 않음.
-- [ ] DB 저장이 완료된 뒤 `201 Created`, `Location` 헤더 및 계약의 평가 결과 DTO 반환.
-- [ ] 실패 결과/중간 기록은 저장하지 않고 POST마다 별도 평가를 생성.
-- [ ] 성공 및 저장 후 재조회, 같은 질문 재제출, 잘못된 답변/없는 질문/평가 실패/저장 실패 테스트.
+- [x] 승인된 최대 3,000 UTF-16 코드 단위 답변 길이를 Request DTO와 계약에 반영하고 입력 경계 검증.
+- [ ] 배포 전 후속 작업: 전체 JSON 본문 바이트 상한과 거부 상태/계약 결정 및 적용. 답변 길이 검증은 대용량 HTTP 본문 수신 제한이 아님.
+- [x] `POST /api/questions/{questionId}/evaluation-attempts` 구현.
+- [x] 요청 검증 → QuestionRepository로 질문 조회 → EvaluationCriterionRepository로 기준 목록 조회 → 평가 → LLM 응답 검증/합산/판정 → 완료 기록 저장을 하나의 동기식 요청으로 연결. 저장 기준의 도메인 규칙은 재검증하지 않음.
+- [x] DB 저장이 완료된 뒤 `201 Created`, `Location` 헤더 및 계약의 평가 결과 DTO 반환.
+- [x] 실패 결과/중간 기록은 저장하지 않고 POST마다 별도 평가를 생성.
+- [x] 성공 반환 ID/감사 시각, 같은 질문 재제출, 잘못된 답변/없는 질문/평가 실패/저장 실패 계층별 테스트. 실제 commit 후 HTTP 재조회는 9단계에서 별도 검증.
 
-완료 기준: 사용자 답변을 제출하면 저장된 결과 ID와 점수/피드백을 얻는다. 누락/null/문자열 외 타입/빈 문자열/공백 답변은 LLM 호출 전에 `400`으로 거부한다. 처리 중 오류가 나면 성공 응답을 반환하지 않는다.
+완료 기준: 사용자 답변을 제출하면 저장된 결과 ID와 점수/피드백을 얻는다. 누락/null/문자열 외 타입/빈 문자열/공백/3,000 UTF-16 코드 단위 초과 답변은 LLM 호출 전에 `400`으로 거부한다. 원문을 trim하거나 자르지 않으며 처리 중 오류가 나면 성공 응답을 반환하지 않는다. 계층별 mock 및 Repository 롤백 테스트만으로 commit 후 재조회나 브라우저 흐름을 검증했다고 표시하지 않는다.
+
+POST 단계 검증(2026-10-05): Windows `.\gradlew.bat clean build` 성공, 전체 196개 테스트 통과. 제출 Service 11개, Controller 35개, 공통 Handler 16개와 기존 질문/엄격한 LLM 검증/CORS/Repository/context 회귀를 확인했다. 답변 필드 한정 Jackson 3 역직렬화로 숫자/boolean String coercion을 차단한다. Service는 질문/기준 각 1회 조회 후 검증된 완료 기록만 save하며 LLM 대기 중 외부 DB 트랜잭션은 없다. mock save 반환의 ID/감사 시각을 사용하고 누락 시 500으로 처리한다. 405/415의 원래 상태도 보존한다. 실제 외부 LLM/개발 DB/브라우저 또는 commit 후 HTTP GET은 이 단계에서 검증하지 않았다.
 
 ## 7. 평가 결과 조회
 
-- [ ] `GET /api/evaluation-attempts/{attemptId}` 구현.
-- [ ] POST와 같은 결과 형식으로 질문 ID/제목, 답변 원문, 점수/판정, 피드백, 생성 시각 반환.
-- [ ] 잘못된 ID와 없는 평가 기록의 `400`/`404` 처리.
-- [ ] 저장 결과 조회, 오류 응답, LLM 재호출 없음 테스트.
+- [x] `GET /api/evaluation-attempts/{attemptId}` 구현.
+- [x] POST와 같은 결과 형식으로 질문 ID/현재 제목, 답변 원문, 저장된 점수/판정, 피드백, 생성 시각 반환.
+- [x] 잘못된 ID와 없는 평가 기록의 `400`/`404` 처리. 참조 질문 누락/DB 오류는 안전한 500.
+- [x] 저장 결과 조회, 오류 응답, 기준 조회/LLM 재호출/점수 재계산 없음 테스트.
 
 완료 기준: 제출로 생성된 평가 ID를 조회하면 저장된 결과를 복원할 수 있다. 결과 화면 새로고침에 필요한 데이터를 제공하며 평가 기록 목록이나 사용자 기록 기능은 추가하지 않는다.
+
+GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개 테스트 통과. EvaluationService 16개와 EvaluationAttemptController 49개로 POST 회귀/GET 성공·ID 경계·404·DB/참조 500을 검증했다. GET 메서드에만 짧은 readOnly 트랜잭션을 적용한다. 제목 스냅샷이나 연관관계/새 스키마/의존성은 추가하지 않았다.
 
 ## 8. LLM 실패 및 공통 예외 처리
 
@@ -137,26 +142,30 @@
 
 - [ ] 라이브러리 기본 timeout/전송 retry와 프론트 180초 대기 종료/수동 재시도 UX를 실제 공급자/프록시와 연결 검증.
 - [x] 애플리케이션의 timeout/횟수 설정과 수동 재시도 제거. Spring AI 기본 SDK 정책에 맡기고 JSON 검증 실패는 즉시 종료. opt-in 교정 Advisor는 추가하지 않음.
-- [ ] 재시도 소진 시 `502 LLM_EVALUATION_FAILED` 반환, 잘못된 요청/없는 질문/DB 오류는 LLM 재시도에서 제외. 저장 기준 오류를 탐지하는 별도 검증 흐름은 추가하지 않음.
-- [ ] `400`/`404`/`502`/`500` 응답을 계약의 공통 `code`, `message` 형식으로 통일. 내부 정보/키/평가 기준은 응답에 숨김.
-- [ ] 모델 반환값/최종 실패를 mock한 Service/Controller 계약 및 DB 저장 실패 시 LLM 재호출 없음 테스트. 라이브러리 retry 내부는 별도 재구현/테스트하지 않음.
+- [x] 라이브러리 최종 실패와 응답 검증 실패에 `502 LLM_EVALUATION_FAILED` 반환, 잘못된 요청/없는 질문/DB 오류는 애플리케이션에서 재호출하지 않음. 저장 기준 오류를 탐지하는 별도 검증 흐름은 추가하지 않음. 라이브러리 retry 내부/실제 소진은 검증 대상이 아님.
+- [x] `400`/`404`/`502`/`500` 응답을 계약의 공통 `code`, `message` 형식으로 통일. 내부 정보/키/평가 기준은 응답에 숨김.
+- [x] 모델 반환값/최종 실패를 mock한 Service/Controller 계약 및 DB 저장 실패 시 LLM 재호출 없음 테스트. 라이브러리 retry 내부는 별도 재구현/테스트하지 않음.
 
 완료 기준: 애플리케이션 재시도 없이 라이브러리 최종 실패/응답 검증 실패를 안전한 오류로 처리하고 실패 기록은 저장하지 않는다. 프론트는 180초 무응답 시 답변 유지/수동 재시도 안내를 제공하되 서버 실패 확정으로 간주하지 않는다. 실제 공급자/프록시 연결과 중복 제출 위험을 확인한다.
 
 ## 9. 테스트 및 Core Flow 검증
 
-- [ ] 기존 `./gradlew test` 실행에 필요한 DB/환경설정을 준비하고 빌드와 테스트 결과 확인. 실패하면 원인과 미검증 범위를 기록.
-- [ ] PostgreSQL 마이그레이션, 질문/기준 조회, 평가 저장/재조회 통합 테스트.
-- [ ] 네 API의 JSON 타입/필수 필드/상태 코드/오류 코드가 `docs/API.md`와 일치하는지 확인.
+- [x] 기존 테스트 설정과 Docker 호환 런타임으로 `.\gradlew.bat clean build` 실행 및 전체 216개 통과 확인. 개발/운영 DB나 .env는 사용하지 않음.
+- [x] 기존 Testcontainers/Flyway 자동 설정 아래 질문/기준 조회, 외부 모델 대체 평가 및 실제 commit 후 별도 HTTP GET 연결 테스트. 마이그레이션 이력/인프라 assertion 및 Repository flush/clear 없음.
+- [x] 네 API의 JSON 타입/필수 필드/상태 코드/오류 코드가 `docs/API.md`와 일치하는지 계층별 테스트로 확인.
 - [ ] 후속 검토/별도 승인 후 실제 환경의 유효한 LLM 응답과 Spring AI/CODEX_LB 호환성을 수동 확인. 이번에는 실제 LLM 호출 없이 제어 가능한 대체로 타임아웃/잘못된 응답/재시도 실패를 검증.
 - [ ] 목록 → 상세 → 답변 제출 → 결과 표시 → 결과 재조회 흐름을 프론트엔드와 연결해 확인.
 - [ ] 프론트엔드와 중복 제출 방지, 분석 중 표시, 오류 시 답변 유지, 결과 새로고침 복원, POST 자동 재전송 방지를 확인.
 - [ ] 프론트 180초 대기 종료 후 답변 유지/수동 재시도 안내 구현과 확인. 이전 서버 요청이 진행 중일 수 있어 중복 평가/비용 위험을 공유하며 백엔드 취소/중복 방지 기능은 임의로 추가하지 않음.
 - [x] `CORS_ALLOWED_ORIGINS` 기반 `/api/**` CORS 설정과 개발 Origin `http://localhost:5173` 적용, MockMvc 허용/거부/preflight 검증. 배포 Origin과 실제 브라우저/프록시 연결은 아래 별도 항목에서 확인.
 - [ ] 실제 개발/배포 프론트엔드와 브라우저 CORS 연결 및 운영 Origin/프록시 설정 검증.
-- [ ] 공개 API에 평가 기준이 노출되지 않는지, 결과 조회에 인증/소유자 보호가 없다는 제한이 공유되었는지 확인.
+- [x] 공개 API의 정확한 필드 검증으로 평가 기준 비노출 확인. 결과 조회에 인증/소유자 보호가 없고 ID를 아는 누구나 답변/결과를 읽을 수 있음을 API 문서에 공유.
 
 완료 기준: 정상 경로와 핵심 실패 경로가 검증되고 결과 페이지를 다시 열어도 저장된 평가를 조회할 수 있다. 실제 호출/배포 연결 등 확인하지 못한 항목은 완료로 표시하지 않는다.
+
+연결 검증(2026-10-05): `EvaluationCoreFlowTest`는 RANDOM_PORT 실제 서버 + Testcontainers PostgreSQL + 테스트 전용 `@MockitoBean OpenAiChatModel`을 사용한다. 테스트 전체 트랜잭션 없이 직접 생성한 질문/기준으로 HTTP 목록 → 상세 → POST 201/Location → GET → 반복 GET을 확인하고 동일 답변 재제출의 새 ID/기록과 모델 호출 2회를 검증했다. Repository 테스트와 별개로 실제 commit 이후 요청에서 읽는 검증이다. 첫 실행은 POST Auditing 나노초와 PostgreSQL GET 마이크로초의 차이로 본문 전체 일치 assertion이 실패했다. 시각을 변경하지 않고 UTC 시각 차이 1마이크로초 미만과 나머지 필드 동일성/반복 GET 동일성을 분리한 후 통과했다.
+
+프론트 파일 변경 없이 기존 `npm run test:run -- src/pages/QuestionAnswerPage.test.tsx src/pages/EvaluationResultPage.test.tsx`를 실행해 30개가 통과했다. 오류 후 답변 유지, 진행 중 단일 POST, 결과 GET 실패/재시도 시 POST 재전송 없음의 기존 jsdom/MSW 검증이며 실제 백엔드/브라우저 연결 성공을 뜻하지 않는다. 현재 브라우저 제어 도구와 프로젝트 E2E 실행 설정이 없어 실제 URL 직접 접근/새로고침·브라우저 CORS는 미검증으로 남긴다. 새 브라우저 도구/의존성이나 프론트 코드/문서는 추가·변경하지 않았다. front/TODO.md의 오래된 서버 deadline 설명 정정은 프론트 후속 작업이며, 실모델/품질/운영 설정/전체 본문 제한도 미완료 상태를 유지한다.
 
 ### CORS 설정 및 검증
 
@@ -167,4 +176,4 @@
 
 ## 구현 전 결정 필요
 
-`docs/API.md`의 미확정 사항을 참조한다. 답변 길이 제한, 운영 Origin, 기록 보관 정책은 임의로 확정하지 않는다. 현재 CODEX_LB/gpt-6-sol, Spring AI 기본 timeout/retry, 네이티브 Schema, 실제 호출 검증 보류와 프론트 180초 대기 종료 방향은 확정했다. 모델/endpoint 환경변수는 변경하지 않는다. 개발 Origin/CORS와 초기 데이터는 해당 단계에 기재했으며 범위 밖 기능을 추가하지 않는다.
+`docs/API.md`의 미확정 사항을 참조한다. 답변 최대 길이는 3,000 UTF-16 코드 단위로 승인되었다. 전체 JSON 본문 크기 제한, 운영 Origin, 기록 보관 정책은 별도 결정하며 임의로 확정하지 않는다. 현재 CODEX_LB/gpt-6-sol, Spring AI 기본 timeout/retry, 네이티브 Schema, 실제 호출 검증 보류와 프론트 180초 대기 종료 방향은 확정했다. 모델/endpoint 환경변수는 변경하지 않는다. 개발 Origin/CORS와 초기 데이터는 해당 단계에 기재했으며 범위 밖 기능을 추가하지 않는다.
