@@ -1,6 +1,8 @@
 package com.eoehd1ek.tech.common.presentation
 
 import com.eoehd1ek.tech.common.presentation.exception.BusinessException
+import com.eoehd1ek.tech.common.presentation.exception.BusinessExceptionNew
+import com.eoehd1ek.tech.common.presentation.exception.ErrorType
 import com.eoehd1ek.tech.common.presentation.response.ErrorResponse
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -41,10 +43,17 @@ class GlobalExceptionHandler {
                 .body(invalidRequestResponse)
         }
 
-    @ExceptionHandler(BusinessException::class)
-    fun handleBusinessException(exception: BusinessException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(exception.status)
-            .body(ErrorResponse(code = exception.code, message = exception.message))
+    @ExceptionHandler(BusinessExceptionNew::class)
+    fun handleBusinessException(
+        exception: BusinessExceptionNew
+    ): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(exception.type.toHttpStatus())
+            .body(
+                ErrorResponse(
+                    code = exception.code,
+                    message = exception.message
+                )
+            )
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpectedException(exception: Exception): ResponseEntity<ErrorResponse> {
@@ -53,4 +62,12 @@ class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(internalServerErrorResponse)
     }
+
+    private fun ErrorType.toHttpStatus(): HttpStatus =
+        when (this) {
+            ErrorType.INVALID_INPUT -> HttpStatus.BAD_REQUEST
+            ErrorType.NOT_FOUND -> HttpStatus.NOT_FOUND
+            ErrorType.CONFLICT -> HttpStatus.CONFLICT
+            ErrorType.DEPENDENCY_FAILURE -> HttpStatus.BAD_GATEWAY
+        }
 }
