@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.common
+package com.eoehd1ek.tech.common.presentation.exception
 
 import org.springframework.http.HttpStatus
 

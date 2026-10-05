@@ -1,6 +1,6 @@
 package com.eoehd1ek.tech.question
 
-import com.eoehd1ek.tech.common.BusinessException
+import com.eoehd1ek.tech.common.presentation.exception.BusinessException
 import org.springframework.http.HttpStatus
 
 class QuestionNotFoundException : BusinessException(

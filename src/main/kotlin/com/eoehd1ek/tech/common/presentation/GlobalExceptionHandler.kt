@@ -1,6 +1,6 @@
 package com.eoehd1ek.tech.common.presentation
 
-import com.eoehd1ek.tech.common.BusinessException
+import com.eoehd1ek.tech.common.presentation.exception.BusinessException
 import com.eoehd1ek.tech.common.presentation.response.ErrorResponse
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
