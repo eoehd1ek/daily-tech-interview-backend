@@ -1,4 +1,4 @@
-package com.eoehd1ek.tech.config
+package com.eoehd1ek.tech.config.properties
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 

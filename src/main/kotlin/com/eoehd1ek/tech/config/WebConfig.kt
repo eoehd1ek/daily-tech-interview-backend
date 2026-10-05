@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.config
 
+import com.eoehd1ek.tech.config.properties.CorsProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.CorsRegistry
