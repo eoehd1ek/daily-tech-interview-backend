@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.common
 
+import com.eoehd1ek.tech.evaluation.LlmEvaluationFailedException
 import jakarta.validation.constraints.Min
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -77,6 +78,24 @@ class GlobalExceptionHandlerTest {
         assertThat(body.get("message").asString()).isEqualTo("서버 내부 오류가 발생했습니다.")
     }
 
+    @Test
+    fun `평가 실패 예외는 내부 정보 없이 502 평가 실패 응답을 반환한다`() {
+        // given
+        val request = get("/test/errors/evaluation")
+
+        // when
+        val response = mockMvc.perform(request).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(502)
+        assertThat(MediaType.parseMediaType(requireNotNull(response.contentType)))
+            .isEqualTo(MediaType.APPLICATION_JSON)
+        val body = objectMapper.readTree(response.contentAsByteArray)
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("code", "message")
+        assertThat(body.get("code").asString()).isEqualTo("LLM_EVALUATION_FAILED")
+        assertThat(body.get("message").asString()).isEqualTo("평가 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
+    }
+
     @RestController
     class TestController {
         @GetMapping("/test/errors/business")
@@ -88,6 +107,9 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/test/errors/return-value")
         @Min(1)
         fun invalidReturnValue(): Long = 0
+
+        @GetMapping("/test/errors/evaluation")
+        fun evaluationError(): String = throw LlmEvaluationFailedException()
     }
 
     private class TestBusinessException : BusinessException(
