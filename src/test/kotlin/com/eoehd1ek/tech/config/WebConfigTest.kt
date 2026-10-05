@@ -51,13 +51,14 @@ class WebConfigTest {
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isNull()
     }
 
-    @Test
-    fun `허용 Origin의 JSON POST 사전 요청은 Service 호출 없이 처리한다`() {
+    @ParameterizedTest
+    @ValueSource(strings = ["POST", "PUT"])
+    fun `허용 Origin의 JSON 쓰기 사전 요청은 Service 호출 없이 처리한다`(method: String) {
         // given
         val origin = "http://localhost:5173"
         val request = options("/api/questions")
             .header(HttpHeaders.ORIGIN, origin)
-            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, method)
             .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type")
 
         // when
@@ -70,7 +71,7 @@ class WebConfigTest {
             ?.split(",")
             ?.map(String::trim)
         assertThat(allowedMethods)
-            .containsExactlyInAnyOrder("GET", "POST", "OPTIONS")
+            .containsExactlyInAnyOrder("GET", "POST", "PUT", "OPTIONS")
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS)).isEqualTo("Content-Type")
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isNull()
         verifyNoInteractions(questionService)

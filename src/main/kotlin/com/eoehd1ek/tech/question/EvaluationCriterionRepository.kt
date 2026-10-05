@@ -4,4 +4,6 @@ import org.springframework.data.jpa.repository.JpaRepository
 
 interface EvaluationCriterionRepository : JpaRepository<EvaluationCriterion, Long> {
     fun findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId: Long): List<EvaluationCriterion>
+
+    fun deleteAllByQuestionId(questionId: Long)
 }

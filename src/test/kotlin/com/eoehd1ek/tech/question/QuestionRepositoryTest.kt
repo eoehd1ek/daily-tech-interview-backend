@@ -77,4 +77,39 @@ class QuestionRepositoryTest {
         // then
         assertThat(result).isEmpty()
     }
+
+    @Test
+    fun `해당 질문의 기준을 삭제하면 다른 질문의 기준은 유지된다`() {
+        // given
+        val questionId = requireNotNull(questionRepository.save(Question("질문", "본문")).id)
+        val otherId = requireNotNull(questionRepository.save(Question("다른 질문", "본문")).id)
+        criterionRepository.save(EvaluationCriterion(questionId, "삭제할 기준", 100, 1))
+        val other = criterionRepository.save(EvaluationCriterion(otherId, "유지할 기준", 100, 1))
+
+        // when
+        criterionRepository.deleteAllByQuestionId(questionId)
+
+        // then
+        assertThat(criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)).isEmpty()
+        assertThat(criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(otherId))
+            .usingRecursiveComparison().isEqualTo(listOf(other))
+    }
+
+    @Test
+    fun `질문의 제목과 본문을 변경하면 ID는 유지된다`() {
+        // given
+        val question = questionRepository.save(Question("이전 제목", "이전 본문"))
+        val questionId = requireNotNull(question.id)
+
+        // when
+        question.changeTitle("변경된 제목")
+        question.changeContent("변경된 본문")
+        questionRepository.save(question)
+
+        // then
+        val result = questionRepository.findById(questionId).orElseThrow()
+        assertThat(result.id).isEqualTo(questionId)
+        assertThat(result.title).isEqualTo("변경된 제목")
+        assertThat(result.content).isEqualTo("변경된 본문")
+    }
 }

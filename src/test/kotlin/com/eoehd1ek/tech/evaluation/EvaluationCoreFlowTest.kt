@@ -4,6 +4,8 @@ import com.eoehd1ek.tech.question.EvaluationCriterion
 import com.eoehd1ek.tech.question.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.Question
 import com.eoehd1ek.tech.question.QuestionRepository
+import com.eoehd1ek.tech.question.AdminQuestionRequest
+import com.eoehd1ek.tech.question.AdminCriterionRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.any
@@ -113,5 +115,64 @@ class EvaluationCoreFlowTest {
         assertThat(secondBody.get("id").asLong()).isPositive().isNotEqualTo(id)
         assertThat(attemptRepository.findById(secondBody.get("id").asLong()).orElseThrow().answer).isEqualTo(answer)
         verify(model, times(2)).call(any(Prompt::class.java))
+    }
+
+    @Test
+    fun `관리자 생성과 수정은 공개 조회에 반영되고 기존 평가 기록은 유지된다`() {
+        // given
+        val client = HttpClient.newHttpClient()
+        val base = "http://localhost:$port"
+        val original = AdminQuestionRequest("생성 제목", "생성 본문", listOf(AdminCriterionRequest("기존 기준", 100)))
+        val changed = AdminQuestionRequest("수정 제목", "수정 본문", listOf(
+            AdminCriterionRequest("새 첫 기준", 40), AdminCriterionRequest("새 둘째 기준", 60),
+        ))
+        val createRequest = HttpRequest.newBuilder(URI.create("$base/api/admin/questions"))
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(original))).build()
+
+        // when
+        val created = client.send(createRequest, HttpResponse.BodyHandlers.ofString())
+        val createdBody = objectMapper.readTree(created.body())
+        val questionId = createdBody.get("id").asLong()
+        val oldCriterionId = createdBody.get("criteria").get(0).get("id").asLong()
+        val attempt = attemptRepository.save(EvaluationAttempt(
+            questionId, "보존할 답변", 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+        ))
+        val updated = client.send(HttpRequest.newBuilder(URI.create("$base/api/admin/questions/$questionId"))
+            .header("Content-Type", "application/json")
+            .PUT(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changed))).build(),
+            HttpResponse.BodyHandlers.ofString())
+        val detail = client.send(HttpRequest.newBuilder(URI.create("$base/api/questions/$questionId")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val list = client.send(HttpRequest.newBuilder(URI.create("$base/api/questions")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val result = client.send(HttpRequest.newBuilder(
+            URI.create("$base/api/evaluation-attempts/${attempt.id}")).GET().build(), HttpResponse.BodyHandlers.ofString())
+
+        // then
+        assertThat(created.statusCode()).isEqualTo(201)
+        assertThat(created.headers().firstValue("Location").orElseThrow()).isEqualTo("/api/admin/questions/$questionId")
+        assertThat(updated.statusCode()).isEqualTo(200)
+        assertThat(objectMapper.readTree(updated.body()).get("id").asLong()).isEqualTo(questionId)
+        assertThat(criterionRepository.findById(oldCriterionId)).isEmpty()
+        val criteria = criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)
+        assertThat(criteria.map { it.content }).containsExactly("새 첫 기준", "새 둘째 기준")
+        assertThat(criteria.map { it.maxScore }).containsExactly(40, 60)
+        assertThat(criteria.map { it.displayOrder }).containsExactly(1, 2)
+        assertThat(detail.statusCode()).isEqualTo(200)
+        val detailBody = objectMapper.readTree(detail.body())
+        assertThat(detailBody.propertyNames()).containsExactlyInAnyOrder("id", "title", "content")
+        assertThat(detailBody.get("title").asString()).isEqualTo(changed.title)
+        assertThat(detailBody.get("content").asString()).isEqualTo(changed.content)
+        assertThat(list.statusCode()).isEqualTo(200)
+        assertThat(objectMapper.readTree(list.body()).toList().filter { it.get("id").asLong() == questionId }
+            .map { it.get("title").asString() }).containsExactly(changed.title)
+        assertThat(result.statusCode()).isEqualTo(200)
+        val resultBody = objectMapper.readTree(result.body())
+        assertThat(resultBody.get("questionTitle").asString()).isEqualTo(changed.title)
+        assertThat(resultBody.get("answer").asString()).isEqualTo(attempt.answer)
+        assertThat(resultBody.get("score").asInt()).isEqualTo(attempt.score)
+        assertThat(attemptRepository.findById(requireNotNull(attempt.id)).orElseThrow())
+            .usingRecursiveComparison().ignoringFields("createdAt").isEqualTo(attempt)
     }
 }

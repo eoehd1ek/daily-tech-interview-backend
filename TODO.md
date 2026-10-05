@@ -188,14 +188,14 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 - 저장 즉시 공개하며 기준은 전체 교체/배열 순서로 displayOrder 지정. 기존 평가 기록은 보존하고 제목은 현재 값으로 읽는 기존 구현을 유지한다. 초안/발행/삭제/과거 평가 스냅샷은 추가하지 않는다.
 - preview는 일반 사용자와 같은 총점/판정/종합 피드백만 반환하며 비저장이다. 항목별 결과 API/화면은 추가하지 않는다. 미저장 입력 보호와 저장 후 이동은 프론트 담당이며 백엔드 임시저장 API는 없다.
 
-위 계약으로 백엔드 기능과 프론트 mock 작업을 진행할 수 있다. 전체 본문 크기 수치/실제 프록시 설정은 배포 책임으로 분리하며 인증 상세 계획도 현재 MVP 구현의 선행 조건이 아니다. 관리자 API는 아직 미구현이다.
+위 계약으로 백엔드 기능과 프론트 mock 작업을 진행할 수 있다. 전체 본문 크기 수치/실제 프록시 설정은 배포 책임으로 분리하며 인증 상세 계획도 현재 MVP 구현의 선행 조건이 아니다. 관리자 생성·수정은 구현되었고 목록/상세 GET과 preview는 아직 미구현이다.
 
 ## 11. 관리자 PUT CORS 지원
 
 목적: 기존 CORS 정책에 전체 수정의 PUT 메서드만 추가한다. Security나 로그인 기능은 구현하지 않는다.
 
-- [ ] 공통 CORS 허용 메서드에 PUT을 추가한다. 허용 Origin/Content-Type/Location/credentials 미허용 정책은 유지하고 인증 헤더/쿠키/CSRF 처리는 추가하지 않는다.
-- [ ] PUT preflight/허용·거부 Origin/기존 GET·POST 회귀를 MockMvc로 검증한다. 인증/인가 테스트나 401/403 애플리케이션 계약은 추가하지 않는다.
+- [x] 공통 CORS 허용 메서드에 PUT을 추가한다. 허용 Origin/Content-Type/Location/credentials 미허용 정책은 유지하고 인증 헤더/쿠키/CSRF 처리는 추가하지 않는다.
+- [x] PUT preflight/허용·거부 Origin/기존 GET·POST 회귀를 MockMvc로 검증한다. 인증/인가 테스트나 401/403 애플리케이션 계약은 추가하지 않는다.
 
 완료 기준: 허용 Origin의 브라우저에서 PUT 요청이 가능하고 기존 CORS 계약은 유지된다. 이 작업으로 관리자 접근 보호가 생기는 것은 아니다.
 
@@ -205,9 +205,10 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 
 - [ ] `GET /api/admin/questions`는 `{ id, title }[]`, 상세 GET은 `id`, `title`, `content`, `criteria[{ id, content, maxScore, displayOrder }]`를 반환한다. 공개 상세 DTO를 확장하지 않는다.
 - [ ] 상세 GET의 ID 검증/없는 질문 404/기준 정렬과 DB 오류 공통 처리를 구현한다. 평가 기준은 일반 사용자 목록/상세 DTO에 추가하지 않는다. 인증 전에는 관리자 상세 자체도 접근 보호가 없음을 계약에 명시한다.
-- [ ] 생성/수정/preview가 공유하는 질문 입력 검증을 구현한다. 필수 비공백 문자열/엄격한 JSON 타입/제목 200·본문 10,000·기준 설명 1,000 UTF-16 상한/기준 1~10개/양의 정수 배점/합계 100을 검증하고 원문은 보존한다.
-- [ ] 요청에는 기준 ID/questionId/displayOrder를 요구하지 않으며 배열 순서대로 서버가 1부터 순서를 부여한다. 잘못된 입력은 `400 INVALID_REQUEST`로 처리하고 입력 원문을 오류에 반사하지 않는다.
-- [ ] Service/Controller 테스트로 관리자 조회 필드/빈 목록/ID 경계/404/500과 입력 누락/null/잘못된 타입/공백/배점 소수·0·음수/합계 부족·초과/각 문자열 상한과 상한+1/기준 0·1·10·11개 경계를 검증한다.
+- [x] 생성/수정이 공유하는 AdminQuestionRequest 입력 검증을 구현한다. 기본 Jackson 변환 후 필수 비공백 문자열/제목 200·본문 10,000·기준 설명 1,000 UTF-16 상한/기준 1~10개/양의 정수 배점/합계 100을 검증하고 문자열 원문은 보존한다. 관리자 커스텀 역직렬화/별도 coercion 설정은 사용하지 않는다. preview 연결은 14단계에서 수행한다.
+- [x] 요청에는 기준 ID/questionId/displayOrder를 요구하지 않으며 배열 순서대로 서버가 1부터 순서를 부여한다. 잘못된 입력은 `400 INVALID_REQUEST`로 처리하고 입력 원문을 오류에 반사하지 않는다.
+- [x] 생성/수정 Controller 테스트로 ID 경계/404/500과 입력 누락/null/Jackson 변환 불가 타입/공백/배점 0·음수/합계 부족·초과/각 문자열 상한과 상한+1/기준 0·1·10·11개 경계를 검증한다. 기본 변환이 허용하는 타입 coercion을 거부하는 테스트는 제거했다.
+- [ ] 관리자 GET 조회 필드/빈 목록/ID 경계/404/500을 검증한다.
 
 완료 기준: 관리자 상세 형식으로 질문과 기준을 읽고 같은 작성 규칙을 저장과 테스트에서 재사용할 수 있다. 인증 보호는 없다. Entity 검증/DB CHECK/외래 키 제약으로 규칙을 옮기거나 공개 조회에서 저장 기준을 재검증하지 않는다.
 
@@ -215,13 +216,17 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 
 목적: 하나의 저장 요청으로 질문과 기준을 함께 반영하고 일반 사용자 조회에 공개한다. LLM 호출은 하지 않는다.
 
-- [ ] `POST /api/admin/questions`에 title/content/criteria 전체 입력을 받아 질문/기준을 저장한다. commit 후 `201 Created`, 관리자 상세 DTO, 관리자 상세 `Location` 헤더를 반환한다.
-- [ ] `PUT /api/admin/questions/{questionId}`는 기존 질문 ID를 유지하고 제목/본문/기준 전체를 교체한다. 기준 ID는 새로 발급하며 없는 질문은 생성하지 않고 404를 반환한다. 성공은 `200 OK`와 관리자 상세 DTO다.
-- [ ] 생성/수정의 전체 쓰기를 일반적인 짧은 트랜잭션으로 묶고 실패 시 롤백한다. FK/cascade 없이 기존 기준 삭제와 새 기준 저장을 애플리케이션에서 관리한다. 동시성 잠금/직렬화/버전 검사/혼합 방지 로직은 추가하지 않는다.
-- [ ] 기존 EvaluationAttempt는 수정/삭제/재평가하지 않는다. 질문 저장 후 다음 공개 목록/상세 GET에 반영하고 기준은 여전히 숨긴다. 별도 초안/발행/삭제 기능은 추가하지 않는다.
-- [ ] Service/Controller/Repository 기능 테스트로 생성/전체 교체/기준 제거/순서/404/저장 실패를 검증하고 기존 평가 기록 보존 및 공개 DTO 비노출 회귀를 확인한다. 순차 수정이 이전 내용을 덮는지만 확인하며 동시성 테스트/snapshot 읽기 변경은 추가하지 않는다. mock 테스트만으로 실제 DB 롤백 검증 완료라고 표시하지 않는다.
+- [x] `POST /api/admin/questions`에 title/content/criteria 전체 입력을 받아 질문/기준을 저장한다. commit 후 `201 Created`, 관리자 상세 DTO, 관리자 상세 `Location` 헤더를 반환한다.
+- [x] `PUT /api/admin/questions/{questionId}`는 기존 질문 ID를 유지하고 제목/본문/기준 전체를 교체한다. 기준 ID는 새로 발급하며 없는 질문은 생성하지 않고 404를 반환한다. 성공은 `200 OK`와 관리자 상세 DTO다.
+- [x] 생성/수정의 전체 쓰기에 @Transactional을 적용했다. FK/cascade 없이 기존 기준 삭제와 새 기준 저장을 애플리케이션에서 관리한다. 별도의 동시성 잠금/직렬화/버전 검사/혼합 방지 로직은 없다. 실제 DB 실패를 주입한 롤백 검증은 15단계의 미완료 항목으로 남긴다.
+- [x] 기존 EvaluationAttempt는 수정/삭제/재평가하지 않는다. 질문 저장 후 다음 공개 목록/상세 GET에 반영하고 기준은 여전히 숨긴다. 별도 초안/발행/삭제 기능은 추가하지 않는다.
+- [x] Service/Controller/Repository 기능 테스트로 생성/전체 교체/기준 제거/순서/404/저장 실패의 안전한 오류를 검증하고, 기존 연결 테스트에 생성·수정 후 공개 조회/평가 기록 보존 확인을 추가했다. 동시성 테스트/snapshot 읽기 변경은 없으며 mock만으로 실제 DB 롤백 검증 완료라고 표시하지 않는다.
 
 완료 기준: 저장 성공 후 질문과 전체 기준이 반영되며 부분 저장은 공개되지 않는다. 저장에 LLM 비용이 들지 않고 기존 평가 결과는 유지된다. 응답 유실 시 자동 재전송하지 않고 목록/상세를 조회해 저장 여부를 확인한다.
+
+생성·수정 검증(2026-10-06): AdminQuestionController/Service와 요청·응답 DTO를 추가하고 Question.title/content를 수정 가능하게 했다. 기준 교체는 deleteAllByQuestionId와 saveAll, 순서는 요청 배열 기준이다. 새로운 의존성/마이그레이션/인증/동시성/LLM 호출/프론트 변경은 없다. 관리자 GET/preview는 미구현이며 생성 Location의 관리자 상세 GET도 후속 작업이다. 최초 빌드는 JSON LongNode/IntNode 비교 차이로 성공 응답 테스트 2개가 실패했다. 같은 JSON 파싱 기준으로 테스트를 수정한 뒤 `.\gradlew.bat clean build`가 통과했다. 입력 검증/CRUD/CORS와 Testcontainers PostgreSQL commit 후 공개 조회 및 기존 평가 보존을 확인했다. 실제 브라우저/배포와 DB 실패 주입 롤백 검증은 하지 않았다.
+
+후속 단순화: 관리자 QuestionStringDeserializer/CriterionScoreDeserializer와 JsonDeserialize를 제거해 기본 Jackson 변환을 사용한다. AdminCriterionRequest/AdminCriterionResponse는 각각 별도 파일로 분리했다. Question의 title/content setter는 protected로 제한하고 Service/테스트는 changeTitle/changeContent로 수정한다. JPA all-open 설정 때문에 private setter는 컴파일되지 않아 기존 ID와 같은 protected 접근을 사용했다. 변경 후 `.\gradlew.bat clean build`가 통과했다. 일반 사용자 답변 역직렬화와 기존 길이/배점 규칙은 유지한다.
 
 ## 14. 저장 전 비저장 평가 테스트 API
 
@@ -240,7 +245,7 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 
 목적: 새 관리자 흐름과 기존 공개 흐름을 함께 검증하고 문서 계약을 프론트 구현에 인계한다.
 
-- [ ] 기존 Docker/Testcontainers 환경에서 `./gradlew clean build`(Windows `.\gradlew.bat clean build`)를 실행하고 결과를 기록한다. 개발/운영 DB 및 실제 LLM은 사용하지 않는다.
+- [x] 생성·수정 구현 후 기존 Docker/Testcontainers 환경에서 `.\gradlew.bat clean build`를 실행했다. 개발/운영 DB 및 실제 LLM은 사용하지 않았다. GET/preview 구현 후에도 다시 전체 검증한다.
 - [ ] 실제 commit 이후 별도 요청으로 관리자 생성 → 공개 목록/상세 → 관리자 상세 → 전체 수정 → 변경 내용 조회를 확인한다. 테스트 전용 모델로 preview 전후 질문/기준/평가 기록이 동일한 것도 검증한다.
 - [ ] PostgreSQL 환경에서 실패 시 질문/기준 전체 롤백을 기능 동작으로 확인한다. 동시성/혼합 읽기 테스트나 SQL 횟수/시스템 카탈로그/마이그레이션 이력 assertion은 추가하지 않는다.
 - [ ] 인증 없는 관리자 GET/POST/PUT/preview와 공개 네 API 회귀 및 PUT/preflight CORS를 검증한다. 인증/권한 거부 테스트는 후속 작업이다. 브라우저/운영 프록시는 mock/MockMvc 성공과 별도로 검증한다.

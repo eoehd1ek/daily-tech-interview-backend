@@ -5,14 +5,28 @@ import jakarta.persistence.*
 @Entity
 @Table(name = "question")
 class Question(
-    @field:Column(nullable = false)
-    val title: String,
-
-    @field:Column(nullable = false)
-    val content: String,
+    title: String,
+    content: String,
 ) {
     @field:Id
     @field:GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null
         protected set
+
+    @field:Column(nullable = false)
+    var title: String = title
+        protected set
+
+    @field:Column(nullable = false)
+    var content: String = content
+        protected set
+
+
+    fun changeTitle(title: String) {
+        this.title = title
+    }
+
+    fun changeContent(content: String) {
+        this.content = content
+    }
 }

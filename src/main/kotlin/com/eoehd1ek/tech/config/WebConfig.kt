@@ -13,7 +13,7 @@ class WebConfig(
     override fun addCorsMappings(registry: CorsRegistry) {
         registry.addMapping("/api/**")
             .allowedOrigins(*corsProperties.allowedOrigins.toTypedArray())
-            .allowedMethods("GET", "POST", "OPTIONS")
+            .allowedMethods("GET", "POST", "PUT", "OPTIONS")
             .allowedHeaders("Content-Type")
             .exposedHeaders("Location")
             .allowCredentials(false)
