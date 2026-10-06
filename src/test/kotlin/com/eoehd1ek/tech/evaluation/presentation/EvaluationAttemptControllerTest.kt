@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.evaluation.presentation
 
+import com.eoehd1ek.tech.config.SecurityConfig
 import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import com.eoehd1ek.tech.evaluation.application.result.EvaluationAttemptResult
@@ -18,10 +19,12 @@ import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.verifyNoMoreInteractions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockHttpServletResponse
+import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -30,6 +33,7 @@ import tools.jackson.databind.ObjectMapper
 import java.time.Instant
 
 @WebMvcTest(EvaluationAttemptController::class)
+@Import(SecurityConfig::class)
 class EvaluationAttemptControllerTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
@@ -39,6 +43,9 @@ class EvaluationAttemptControllerTest {
 
     @MockitoBean
     private lateinit var evaluationService: EvaluationService
+
+    @MockitoBean
+    private lateinit var userDetailsService: UserDetailsService
 
     @Test
     fun `답변 제출은 원문과 정확한 열 필드의 JSON 및 생성된 기록 Location을 반환한다`() {

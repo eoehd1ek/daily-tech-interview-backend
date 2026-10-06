@@ -27,6 +27,8 @@ import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import tools.jackson.databind.ObjectMapper
 import java.net.URI
+import java.net.CookieManager
+import java.net.CookiePolicy
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -123,14 +125,32 @@ class EvaluationCoreFlowTest {
     @Test
     fun `관리자 생성과 수정은 공개 조회에 반영되고 기존 평가 기록은 유지된다`() {
         // given
-        val client = HttpClient.newHttpClient()
+        val cookies = CookieManager(null, CookiePolicy.ACCEPT_ALL)
+        val client = HttpClient.newBuilder().cookieHandler(cookies).build()
         val base = "http://localhost:$port"
+        val initialToken = client.send(HttpRequest.newBuilder(URI.create("$base/api/auth/csrf")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val token = objectMapper.readTree(initialToken.body())
+        val login = client.send(HttpRequest.newBuilder(URI.create("$base/api/auth/login"))
+            .header("Content-Type", "application/json")
+            .header(token.get("headerName").asString(), token.get("token").asString())
+            .POST(HttpRequest.BodyPublishers.ofString("""{"loginId":"integration-admin","password":"test-only-password"}"""))
+            .build(), HttpResponse.BodyHandlers.ofString())
+        assertThat(login.statusCode()).isEqualTo(200)
+        val refreshedToken = client.send(HttpRequest.newBuilder(URI.create("$base/api/auth/csrf")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val csrf = objectMapper.readTree(refreshedToken.body())
+        val me = client.send(HttpRequest.newBuilder(URI.create("$base/api/auth/me")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        assertThat(me.statusCode()).isEqualTo(200)
+        assertThat(objectMapper.readTree(me.body()).get("role").asString()).isEqualTo("ADMIN")
         val original = AdminQuestionRequest("생성 제목", "생성 본문", listOf(AdminCriterionRequest("기존 기준", 100, 10)))
         val changed = AdminQuestionRequest("수정 제목", "수정 본문", listOf(
             AdminCriterionRequest("새 둘째 기준", 60, 20), AdminCriterionRequest("새 첫 기준", 40, -5),
         ))
         val createRequest = HttpRequest.newBuilder(URI.create("$base/api/admin/questions"))
             .header("Content-Type", "application/json")
+            .header(csrf.get("headerName").asString(), csrf.get("token").asString())
             .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(original))).build()
 
         // when
@@ -145,6 +165,7 @@ class EvaluationCoreFlowTest {
         )
         val updated = client.send(HttpRequest.newBuilder(URI.create("$base/api/admin/questions/$questionId"))
             .header("Content-Type", "application/json")
+            .header(csrf.get("headerName").asString(), csrf.get("token").asString())
             .PUT(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changed))).build(),
             HttpResponse.BodyHandlers.ofString())
         val detail = client.send(HttpRequest.newBuilder(URI.create("$base/api/questions/$questionId")).GET().build(),

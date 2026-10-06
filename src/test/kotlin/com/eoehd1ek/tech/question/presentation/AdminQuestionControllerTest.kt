@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.question.presentation
 
+import com.eoehd1ek.tech.config.SecurityConfig
 import com.eoehd1ek.tech.question.application.AdminQuestionService
 import com.eoehd1ek.tech.question.application.QuestionService
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
@@ -21,7 +22,11 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.userdetails.UserDetailsService
+import org.springframework.security.test.context.support.WithMockUser
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.util.ReflectionTestUtils
@@ -31,6 +36,8 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import tools.jackson.databind.ObjectMapper
 
 @WebMvcTest(AdminQuestionController::class)
+@Import(SecurityConfig::class)
+@WithMockUser(roles = ["ADMIN"])
 class AdminQuestionControllerTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
@@ -43,6 +50,9 @@ class AdminQuestionControllerTest {
 
     @MockitoBean
     private lateinit var questionService: QuestionService
+
+    @MockitoBean
+    private lateinit var userDetailsService: UserDetailsService
 
     @ParameterizedTest
     @ValueSource(longs = [1L, 9_007_199_254_740_991L])
@@ -175,7 +185,7 @@ class AdminQuestionControllerTest {
     }
 
     @Test
-    fun `질문 생성은 인증 없이 저장된 상세와 생성 상태 및 Location을 반환한다`() {
+    fun `관리자 질문 생성은 저장된 상세와 생성 상태 및 Location을 반환한다`() {
         // given
         val request = AdminQuestionRequest(" 제목 ", "본문\n원문", listOf(AdminCriterionRequest("기준", 100, 1)))
         val expected = AdminQuestionResponse(10L, request.title, request.content,
@@ -184,6 +194,7 @@ class AdminQuestionControllerTest {
 
         // when
         val response = mockMvc.perform(post("/api/admin/questions")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
             .andReturn().response
 
@@ -208,6 +219,7 @@ class AdminQuestionControllerTest {
 
         // when
         val response = mockMvc.perform(put("/api/admin/questions/10")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
             .andReturn().response
 
@@ -227,7 +239,7 @@ class AdminQuestionControllerTest {
 
         // when
         val responses = requests.map {
-            mockMvc.perform(it.contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().response
+            mockMvc.perform(it.with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().response
         }
 
         // then
@@ -248,6 +260,7 @@ class AdminQuestionControllerTest {
 
         // when
         val response = mockMvc.perform(put("/api/admin/questions/$id")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(body)).andReturn().response
 
         // then
@@ -265,6 +278,7 @@ class AdminQuestionControllerTest {
 
         // when
         val response = mockMvc.perform(put("/api/admin/questions/10")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
             .andReturn().response
 
@@ -282,6 +296,7 @@ class AdminQuestionControllerTest {
 
         // when
         val response = mockMvc.perform(post("/api/admin/questions")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
             .andReturn().response
 

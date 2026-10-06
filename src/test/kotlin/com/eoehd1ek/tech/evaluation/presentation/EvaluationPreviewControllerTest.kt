@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.evaluation.presentation
 
+import com.eoehd1ek.tech.config.SecurityConfig
 import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
@@ -17,13 +18,19 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.userdetails.UserDetailsService
+import org.springframework.security.test.context.support.WithMockUser
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import tools.jackson.databind.ObjectMapper
 
 @WebMvcTest(EvaluationPreviewController::class)
+@Import(SecurityConfig::class)
+@WithMockUser(roles = ["ADMIN"])
 class EvaluationPreviewControllerTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
@@ -33,6 +40,9 @@ class EvaluationPreviewControllerTest {
 
     @MockitoBean
     private lateinit var service: EvaluationService
+
+    @MockitoBean
+    private lateinit var userDetailsService: UserDetailsService
 
     @Test
     fun `저장 전 평가 요청은 기준을 정렬해 임시 ID로 평가하고 저장 ID 없이 결과를 반환한다`() {
@@ -56,6 +66,7 @@ class EvaluationPreviewControllerTest {
 
         // when
         val response = mockMvc.perform(post("/api/admin/questions/evaluation-preview")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(request))).andReturn().response
 
         // then
@@ -74,6 +85,7 @@ class EvaluationPreviewControllerTest {
     fun `잘못된 preview 입력은 평가 호출 전에 거부한다`(body: String) {
         // given
         val request = post("/api/admin/questions/evaluation-preview")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(body)
 
         // when
@@ -110,6 +122,7 @@ class EvaluationPreviewControllerTest {
         // when
         val responses = bodies.map {
             mockMvc.perform(post("/api/admin/questions/evaluation-preview")
+                .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(it)).andReturn().response
         }
 
@@ -128,6 +141,7 @@ class EvaluationPreviewControllerTest {
 
         // when
         val response = mockMvc.perform(post("/api/admin/questions/evaluation-preview")
+            .with(csrf())
             .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(request))).andReturn().response
 
         // then

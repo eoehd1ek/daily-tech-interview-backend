@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpHeaders
+import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -16,13 +17,16 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 @WebMvcTest(
     controllers = [QuestionController::class],
 )
-@Import(WebConfig::class)
-class WebConfigWithoutOriginsTest {
+@Import(SecurityConfig::class)
+class SecurityConfigWithoutOriginsTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
 
     @MockitoBean
     private lateinit var questionService: QuestionService
+
+    @MockitoBean
+    private lateinit var userDetailsService: UserDetailsService
 
     @Test
     fun `허용 Origin 설정이 없으면 교차 Origin 요청을 Service 호출 없이 거부한다`() {

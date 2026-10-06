@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.question.presentation
 
+import com.eoehd1ek.tech.config.SecurityConfig
 import com.eoehd1ek.tech.question.application.QuestionService
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
 import com.eoehd1ek.tech.question.presentation.response.QuestionDetailResponse
@@ -13,13 +14,16 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import tools.jackson.databind.ObjectMapper
 
 @WebMvcTest(QuestionController::class)
+@Import(SecurityConfig::class)
 class QuestionControllerTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
@@ -29,6 +33,9 @@ class QuestionControllerTest {
 
     @MockitoBean
     private lateinit var questionService: QuestionService
+
+    @MockitoBean
+    private lateinit var userDetailsService: UserDetailsService
 
     @Test
     fun `질문 목록 요청은 ID와 제목만 포함한 JSON 배열을 반환한다`() {

@@ -1,10 +1,37 @@
 # MVP API Contract
 
+## Security 연동 계약
+
+이번 작업으로 이전 무인증 관리자 계약을 대체한다. 공개 API의 JSON/경로/상태는 유지하고 관리자 API는 서버 세션의 ADMIN 역할을 요구한다. GET /api/questions, GET /api/questions/{questionId}, POST /api/questions/{questionId}/evaluation-attempts, GET /api/evaluation-attempts/{attemptId}만 HTTP 메서드와 경로를 명시해 공개한다. 인증 API의 필요한 예외를 제외한 나머지 경로/메서드는 기본 거부한다.
+
+### 프론트 병렬 작업 계약
+
+| Method | Path | 성공 응답 | 비인증 접근/CSRF |
+| --- | --- | --- | --- |
+| GET | `/api/auth/csrf` | 200 `{ "headerName": "X-CSRF-TOKEN", "parameterName": "_csrf", "token": "..." }` | 허용, credentials 필요 |
+| POST | `/api/auth/login` | 200 `{ "id": 1, "loginId": "admin", "role": "ADMIN" }` | 허용, JSON `{ "loginId": "...", "password": "..." }`, CSRF 필요 |
+| GET | `/api/auth/me` | 200 `{ "id": 1, "loginId": "admin", "role": "ADMIN" }` | 인증 필요, 비인증 401 |
+| POST | `/api/auth/logout` | 204 No Content | 인증 필요, CSRF 필요 |
+
+- 로그인/CSRF 조회/세션 확인/로그아웃/관리자 API는 axios `withCredentials: true`를 사용한다. Set-Cookie를 JS에서 읽지 않고 브라우저에 처리를 맡긴다. 비밀번호/세션 ID를 번들/localStorage/sessionStorage에 저장하지 않는다. 공개 API는 기존 무로그인 흐름을 유지한다.
+- 로그인 전에 csrf GET을 호출하고 반환된 headerName의 헤더에 token을 넣어 로그인한다. 로그인 성공 후 토큰을 다시 조회하고 관리자 POST/PUT/preview 및 로그아웃에 사용한다. 토큰은 현재 세션과 함께 쓰고 JS 메모리에서만 유지한다. 로그아웃 후 기존 토큰/계정 상태를 지우고 다음 로그인 전에 다시 조회한다.
+- CSRF는 Security의 세션 저장소와 기본 마스킹 토큰을 사용한다. 별도 CSRF 쿠키는 추가하지 않는다. 공개 답변 제출 POST만 CSRF 예외다. 토큰 조회는 익명 세션을 만들 수 있지만 로그인은 아니다.
+- 인증 오류도 `{ code, message }` JSON이다. 401 AUTHENTICATION_REQUIRED는 로그인 필요/세션 만료, 로그인 실패 401 INVALID_CREDENTIALS는 아이디·비밀번호 오류(존재 여부 구분 없음), 403 ACCESS_DENIED는 권한 부족/기본 차단, 403 INVALID_CSRF_TOKEN은 누락/잘못된 CSRF, 잘못된 로그인 JSON/빈 필드는 400 INVALID_REQUEST다. CSRF 없는 POST는 인증 판정 전에 403일 수 있다.
+- 로그인/로그아웃은 HTML/302 리다이렉트를 반환하지 않는다. me 401은 관리자 경로에서 일반 페이지 또는 로그인 진입으로 이동한다. 네트워크/500/CSRF 오류를 무조건 로그아웃으로 해석하지 않고 POST를 자동 재전송하지 않는다. 기존 관리자 입력은 보존한다.
+- 일반 화면의 관리자 링크를 제거한다. `/admin/login` 같은 로그인 화면은 인증 가드 밖에 두고 다른 `/admin` 경로는 me 성공/ADMIN 확인 후 렌더링한다. 확인 중 로딩/401·비관리자 이동/네트워크 오류·재시도/늦은 응답 무시를 구분한다. 프론트 가드는 UX이며 실제 권한 검증은 백엔드다.
+- CORS는 Security로 이전한다. CORS_ALLOWED_ORIGINS의 명시적 Origin, GET/POST/PUT/OPTIONS, Content-Type/X-CSRF-TOKEN, Location 공개, credentials=true를 사용한다. 와일드카드/쿠키 공유 Domain/Authorization 헤더는 추가하지 않는다. 허용 Origin의 401/403에도 CORS를 제공하고 preflight는 인증 전에 처리한다.
+- 세션은 서버 메모리 기반/유휴 30분/재시작 시 재로그인이다. 쿠키는 HttpOnly/SameSite=Lax/Path=/, 운영 HTTPS는 SESSION_COOKIE_SECURE=true, localhost HTTP는 false다. Domain을 지정하지 않고 URL 세션 추적은 사용하지 않는다. 두 HTTPS 서브도메인은 다른 Origin이라 credentials CORS가 필요하나 같은 site이므로 기본적으로 SameSite=None은 필요하지 않다. 운영 쿠키/CORS는 별도 검증한다.
+- app_user에 id/login_id/password_hash/role만 추가한다. login_id는 유일하고 초기 role은 ADMIN이다. ADMIN_LOGIN_ID/ADMIN_PASSWORD로 최초 생성하고 BCrypt로 해시한다. 기존 동일 ID ADMIN은 비밀번호를 덮어쓰지 않는다. 잘못된 초기 설정/동일 ID 비ADMIN은 시작 오류로 처리한다. 회원가입/비밀번호 변경/JWT/remember-me/Redis는 범위 밖이다.
+- ADMIN_LOGIN_ID는 매 실행 비공백/최대200 UTF-16 값이 필요하다. 신규 생성 때만 ADMIN_PASSWORD가 비공백/최대72 UTF-8 bytes여야 하며 이는 BCrypt 입력 제한이다. 기존 동일 ID ADMIN이 있으면 비밀번호 환경변수를 제거해도 기존 해시는 유지된다. ID 변경은 다른 관리자 생성으로 이어질 수 있으며 자동으로 기존 관리자를 삭제하지 않는다. `.env.example`의 값은 예시이며 실제 `.env`/운영 비밀값은 이번 작업에서 수정하지 않았다.
+- 프론트 코드는 별도 병렬 작업이다. MSW 인증/CSRF fixture와 일반 사용자 회귀·관리자401/403·로그인/로그아웃·입력 보존 테스트를 추가하고 실제 쿠키 연결 검증과 구분한다.
+
+백엔드 검증: 전체 clean build 통과. 익명 공개 네 API/관리자401·USER403·ADMIN허용/기본차단/CSRF/CORS/JSON 로그인·세션 ID 교체·토큰 교체·me·로그아웃을 검증했다. 기존 CRUD 통합 테스트도 인증 우회 없이 Testcontainers DB의 초기 관리자→로그인→쿠키 세션→CSRF 갱신→관리자 생성·수정으로 통과했다. 실제 개발 DB/LLM/브라우저 쿠키/운영 HTTPS와 프론트 변경은 이번 작업에 포함하지 않았다.
+
 ## 1. 목적과 적용 범위
 
 혼자 기술 면접을 준비하는 사용자가 질문을 선택하고 주관식 답변을 제출한 뒤, LLM 평가 점수와 피드백을 확인하는 흐름을 정의한다. 이 문서는 MVP API 계약이다. 질문 목록/상세 조회, 답변 제출·평가·완료 기록 저장, 결과 조회 및 공통 오류 처리가 구현되어 있다. 구현/검증 상태는 `TODO.md`를 참조한다. 외부 LLM을 대체한 실제 HTTP/commit 후 조회는 검증했으며 실제 공급자와 브라우저 연결은 미검증이다.
 
-현재 공개 Core Flow는 로그인과 사용자 구별 없이 동작한다. 같은 질문에 여러 번 답변할 수 있으며, 성공한 평가 결과를 저장하고 ID로 다시 조회한다. 이번 관리자 MVP도 로그인/권한 검증 없이 구현하며, Spring Security와 아이디·비밀번호 인증은 후속 작업으로 계획한다.
+현재 공개 Core Flow는 로그인과 사용자 구별 없이 동작한다. 같은 질문에 여러 번 답변할 수 있으며 성공한 평가 결과를 ID로 다시 조회한다. 관리자 API는 Spring Security의 아이디·비밀번호/서버 세션 인증과 ADMIN 역할을 요구한다. 상단 Security 연동 계약이 이전 무인증 관리자 정책을 대체한다.
 
 1~8절의 공개 Core Flow 계약은 유지한다. 관리자 질문 관리 계약은 10절에 정의하며 관리자 목록·상세·질문 생성·전체 수정·저장 전 평가 테스트와 PUT CORS는 구현되었다. 관리자 기능은 질문/평가 기준 생성·수정과 저장 전 평가 테스트로 한정한다. 로그인 사용자 기록, 사용자 평가 기록 목록, 질문 삭제, 검색/페이지네이션, 일일 제출 제한, 별도의 비동기 작업/메시지 큐/상태 조회 API는 이번 관리자 범위에 포함하지 않는다. 관측 가능성과 배포 파이프라인 구현은 별도 작업이다.
 
@@ -19,7 +46,7 @@
 | 점수 | 정수, 총점은 0~100 |
 | 판정 | `"FAIL"`, `"RETRY"`, `"PASS"` 중 하나 |
 | 생성 시각 | UTC ISO 8601 문자열. 예: `"2026-10-01T07:30:00Z"` |
-| 인증 | 공개 API와 이번 관리자 MVP 모두 없음. Spring Security + 아이디·비밀번호 인증은 후속 계획 |
+| 인증 | 공개 API 네 개는 비로그인, 관리자 API는 세션 ADMIN, 그 외 기본 차단. 인증 API는 상단 계약 참조 |
 | 성공 응답 | 별도 공통 wrapper 없이 JSON 객체 또는 배열 반환 |
 | 오류 응답 | 아래의 공통 `code`, `message` 객체 반환 |
 
@@ -29,12 +56,11 @@
 
 ### CORS 및 환경별 Origin
 
-- `/api/**`에는 Spring MVC 공통 CORS 정책을 적용한다. 개발 프론트엔드 Origin은 `http://localhost:5173`이며 `app.cors.allowed-origins` 설정으로 관리한다. 현재 `.env`와 `.env.example`에는 `CORS_ALLOWED_ORIGINS=http://localhost:5173`을 설정했다. 애플리케이션 자체의 기본 허용 목록은 비어 있으므로 미설정 시 교차 Origin을 허용하지 않는다.
+- `/api/**`에는 SecurityConfig의 CorsConfigurationSource를 적용한다. 기존 MVC WebConfig는 제거했다. 개발 Origin은 `http://localhost:5173`이며 `app.cors.allowed-origins`/CORS_ALLOWED_ORIGINS로 관리한다. 기본 허용 목록은 비어 있어 미설정 시 교차 Origin을 허용하지 않는다.
 - 배포 예정 주소는 프론트엔드 `https://tech.eoehd1ek.com`, 백엔드 `https://techapi.eoehd1ek.com`이다. 배포 시 실행 환경변수 `CORS_ALLOWED_ORIGINS=https://tech.eoehd1ek.com`으로 교체한다. 복수 Origin은 쉼표로 구분한다. 환경변수 변경 후 백엔드를 재시작하면 적용되며 코드 변경/재빌드는 필요하지 않다. Origin에는 경로나 끝의 `/` 없이 스킴/호스트/포트만 지정한다. localhost와 127.0.0.1, 다른 포트는 서로 다른 Origin이다. 와일드카드 허용은 사용하지 않는다.
-- 허용 메서드는 GET/POST/PUT/OPTIONS, 요청 헤더는 Content-Type, 브라우저에 공개하는 응답 헤더는 Location이다. 쿠키 등의 credentials는 허용하지 않으며 현재 프론트에서는 credentials include를 사용하지 않는다. OPTIONS preflight는 MVC에서 처리하고 별도 Controller는 만들지 않는다. CORS 허용이 미구현 API의 존재를 의미하지는 않는다.
-- 허용되지 않은 Origin/메서드/헤더는 MVC의 CORS 처리에서 거부하며 `403`과 CORS 헤더 미노출로 처리된다. 이 거부는 Controller의 API 오류 JSON 계약과 별개이며 브라우저에서는 응답 본문을 읽지 못할 수 있다. 허용 Origin의 정상/처리된 오류 응답에는 CORS 헤더를 제공한다.
-- CORS는 브라우저 교차 Origin 정책이며 인증이나 일반 클라이언트의 접근 제한 기능이 아니다. 추후 Spring Security 적용 시 CORS 연동과 preflight 처리를 확인한다. 배포 프록시가 OPTIONS를 막거나 CORS 헤더를 중복 생성하지 않도록 확인한다. 운영 Origin과 실제 브라우저 연결은 배포 환경에서 별도 검증한다.
-- 관리자 생성·수정 구현에서 PUT 허용을 추가하고 기존 Content-Type/Location/credentials 미허용 정책은 유지했다. 인증 헤더/쿠키/CSRF 처리는 추가하지 않는다. Spring Security의 CORS 연동은 후속 인증 작업에서 다룬다. 실제 브라우저/운영 프록시 연결은 미검증이다.
+- 허용 메서드는 GET/POST/PUT/OPTIONS, 요청 헤더는 Content-Type/X-CSRF-TOKEN, 공개 응답 헤더는 Location이다. credentials를 허용하고 프론트의 인증/관리자 요청은 withCredentials를 사용한다. preflight는 Security의 CORS 처리에서 인증 전에 처리한다. CORS 허용 자체가 해당 메서드의 접근 권한이나 API 존재를 의미하지는 않는다.
+- 허용되지 않은 Origin/메서드/헤더는 CORS 처리에서 403/CORS 헤더 미노출로 거부하며 애플리케이션 JSON 계약과 별개다. 허용 Origin의 정상/401/403/처리된 오류에는 CORS 헤더를 제공한다.
+- CORS는 인증을 대체하지 않는다. 배포 프록시가 OPTIONS를 막거나 CORS 헤더를 중복 생성하지 않도록 한다. 현재 보안 필터/쿠키 세션의 자동 검증과 실제 브라우저/운영 연결 검증을 구분한다.
 
 ### 공통 오류 형식
 
@@ -57,6 +83,10 @@
 | HTTP 상태 | code | 발생 조건 |
 | --- | --- | --- |
 | 400 | INVALID_REQUEST | 잘못된 JSON, 필수 답변 누락/잘못된 타입/빈 답변/길이 초과, 잘못된 경로 ID |
+| 401 | AUTHENTICATION_REQUIRED | 인증 필요/세션 만료 |
+| 401 | INVALID_CREDENTIALS | 로그인 자격 증명 불일치 |
+| 403 | ACCESS_DENIED | 권한 부족/기본 차단 |
+| 403 | INVALID_CSRF_TOKEN | 인증/관리자 쓰기 요청의 CSRF 누락 또는 불일치 |
 | 404 | QUESTION_NOT_FOUND | 질문이 존재하지 않음 |
 | 404 | EVALUATION_ATTEMPT_NOT_FOUND | 평가 기록이 존재하지 않음 |
 | 502 | LLM_EVALUATION_FAILED | 라이브러리 최종 호출 실패 또는 반환 응답 검증 실패. 로컬 검증 실패는 재호출하지 않음 |
@@ -396,7 +426,7 @@ Service 메서드는 submitAnswer/previewEvaluation으로 명확히 구분한다
 - 전체 JSON 본문 제한은 nginx, 초과 상태는 413으로 확정했다. 배포 작업에서 상한 수치(256 KiB 권장안)와 실제 프록시/브라우저 동작을 확정·검증한다. 답변의 3,000 UTF-16 길이 제한과 별개다.
 - 프론트 180초 대기 종료/답변 유지/수동 재시도 안내 구현과 실제 공급자/프록시 연결. 서버 계속 처리 및 중복 제출 위험을 검증한다.
 - CODEX_LB/gpt-6-sol과 Spring AI의 실제 연동/Structured Output 지원 및 품질 검증 방법. 모델/엔드포인트/키는 기존 환경변수로 사용자가 관리하며 이번에는 실제 호출하지 않는다. OpenRouter 장애 대응은 향후 검토 대상으로 현재 자동 전환하지 않는다.
-- 배포 주소는 2절에 확정했으며 운영 CORS/HTTPS/프록시 연결은 미검증이다. 이번 관리자 MVP는 인증을 생략하며 입력 상한은 10절에 확정했다. Spring Security + 아이디·비밀번호의 상세 로그인/세션/CSRF 정책은 후속 인증 작업에서 결정한다.
+- 배포 주소는 2절에 확정했으며 운영 세션 쿠키/CORS/HTTPS/프록시 연결은 미검증이다. 로그인/세션/CSRF 정책은 상단 Security 계약, 관리자 입력 상한은 10절을 따른다.
 - 익명 답변/평가 기록의 보관 기간과 운영상 정리 정책. 삭제 API나 자동 정리 작업은 현재 범위에 추가하지 않는다.
 
 ## 10. 관리자 질문 관리 MVP 계약
@@ -417,9 +447,7 @@ Service 메서드는 submitAnswer/previewEvaluation으로 명확히 구분한다
 
 ### 10.2. 관리자 API 목록
 
-이번 `/api/admin/**` MVP는 로그인과 서버 권한 검증을 하지 않는다. 로그인/로그아웃/세션/토큰 발급 API, Spring Security 의존성, 프론트 인증 가드는 추가하지 않는다. 관리자라는 명칭과 URL 경로는 기능 구분일 뿐 접근 보호를 의미하지 않는다.
-
-인증 없이 외부에 노출하면 누구나 기준을 조회하거나 질문을 생성/수정하고 유료 LLM 테스트를 호출할 수 있다. CORS/Cloudflare 프록시는 이를 막지 않는다. 인증 전 MVP는 로컬 또는 접근이 제한된 환경에서 검증하고, 인터넷 공개 운영 전에는 후속 인증 또는 별도의 접근 제한이 필요하다. 이번 문서 작업에서 인프라 접근 제한을 구현하거나 배포하지 않는다.
+`/api/admin/**`는 세션 인증과 ADMIN 역할을 요구한다. 로그인/CSRF/세션 확인/로그아웃은 상단 계약을 따른다. 프론트 가드나 관리자 링크 제거는 서버 권한 검증의 대체가 아니다. CORS/Cloudflare 프록시도 인증을 대체하지 않는다. 운영에서는 HTTPS/Secure 쿠키/원본 우회 차단/로그인 및 공개 유료 평가 호출량 제한을 별도로 확인한다.
 
 | 기능 | Method | Path | 성공 상태 | 본문 | 구현 상태 |
 | --- | --- | --- | --- | --- | --- |
@@ -543,7 +571,7 @@ Content-Type: application/json
 
 ### 10.6. 관리자 오류 계약
 
-애플리케이션 오류는 기존 `{ code, message }` 두 필드를 사용하고 fieldErrors 같은 새 wrapper는 추가하지 않는다. 이번 MVP에는 인증 오류 401/403 계약을 추가하지 않는다. CORS 계층의 거부는 기존 정책대로 별개다.
+애플리케이션 오류는 기존 `{ code, message }` 두 필드를 사용한다. 인증/권한/CSRF의 401/403은 SecurityErrorHandler에서 같은 JSON으로 반환하며 상단 계약을 따른다. CORS 거부는 별개다.
 
 | HTTP 상태 | code | 적용 |
 | --- | --- | --- |
@@ -569,7 +597,7 @@ GET/저장 API는 LLM을 호출하지 않으므로 502를 사용하지 않는다
 
 ### 10.8. 병렬 작업 경계 및 후속 인증 계획
 
-- API 타입 담당자가 기존 axios 클라이언트에 관리자 DTO/요청 함수/MSW fixture를 먼저 준비한다. 인증 전달/로그인 화면/인증 가드는 추가하지 않는다. 이후 관리자 목록/진입 화면과 생성·수정 공통 편집 화면을 별도 담당자로 병렬 구현한다. 생성/수정/테스트는 같은 폼 상태와 오류 보존 정책을 공유하므로 편집 화면 파일을 서로 다른 담당자가 동시에 수정하지 않는다.
+- 프론트는 상단 Security 계약의 인증 DTO/함수/credentials/CSRF와 로그인 화면/관리자 가드를 별도 병렬 작업으로 반영한다. 기존 관리자 편집 입력 보존/테스트 결과 무효화/자동 POST 재전송 금지 정책을 유지한다.
 - 라우팅/공통 헤더/공유 API 파일은 한 명의 통합 담당자가 수정한다. 미저장 입력 보호와 저장 후 이동은 프론트 담당 범위이며 백엔드 임시저장 API를 요구하지 않는다. 백엔드 미완료 동안에는 명시적 MSW 응답으로 개발하고 서버 구현 이후 CORS·저장 후 공개 목록 반영·preview 비저장·오래된 응답 무시를 실제 연결 검증한다.
 - 실모델 평가 품질 검증과 Cloudflare/nginx 프록시 제한 확인은 별도 승인/배포 검증이다. mock 통과를 실제 공급자 지원이나 운영 연결 완료로 표시하지 않는다.
-- MVP 이후 Spring Security와 아이디·비밀번호 방식으로 관리자 인증/인가를 추가한다. 계정 등록·비밀번호 해시 저장·로그인/로그아웃·세션·CSRF/CORS·401/403 계약은 해당 후속 작업에서 정하며 현재 구현의 선행 조건으로 두지 않는다. 인증 추가 시 이전 무인증 MVP 계약을 함께 갱신한다.
+- Spring Security/아이디·비밀번호/초기 계정/세션·CSRF/CORS는 이번 작업에서 구현했다. 일반 사용자 회원가입/계정 관리/비밀번호 변경은 후속 범위로 남긴다.

@@ -12,12 +12,17 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.core.annotation.Order
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.web.SecurityFilterChain
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -30,7 +35,7 @@ import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.ObjectMapper
 
 @WebMvcTest(GlobalExceptionHandlerTest.TestController::class)
-@Import(GlobalExceptionHandlerTest.TestController::class)
+@Import(GlobalExceptionHandlerTest.TestController::class, GlobalExceptionHandlerTest.TestSecurityConfig::class)
 class GlobalExceptionHandlerTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
@@ -228,6 +233,17 @@ class GlobalExceptionHandlerTest {
         // then
         assertThat(response.status).isEqualTo(415)
         assertThat(response.getHeader(HttpHeaders.LOCATION)).isNull()
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    class TestSecurityConfig {
+        @Bean
+        @Order(0)
+        fun exceptionHandlerTestSecurityFilterChain(http: HttpSecurity): SecurityFilterChain = http
+            .securityMatcher("/test/**")
+            .authorizeHttpRequests { it.anyRequest().permitAll() }
+            .csrf { it.disable() }
+            .build()
     }
 
     @RestController

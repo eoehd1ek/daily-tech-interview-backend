@@ -17,3 +17,8 @@ spring:
       audio:
         speech: none
         transcription: none
+
+app:
+  admin:
+    login-id: integration-admin
+    password: test-only-password

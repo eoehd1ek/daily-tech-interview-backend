@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpHeaders
+import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -26,13 +27,16 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.optio
         "app.cors.allowed-origins[1]=https://frontend.example.com",
     ],
 )
-@Import(WebConfig::class)
-class WebConfigTest {
+@Import(SecurityConfig::class)
+class SecurityConfigTest {
     @Autowired
     private lateinit var mockMvc: MockMvc
 
     @MockitoBean
     private lateinit var questionService: QuestionService
+
+    @MockitoBean
+    private lateinit var userDetailsService: UserDetailsService
 
     @ParameterizedTest
     @ValueSource(strings = ["http://localhost:5173", "https://frontend.example.com"])
@@ -48,7 +52,7 @@ class WebConfigTest {
         assertThat(response.status).isEqualTo(200)
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN)).isEqualTo(origin)
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS)).isEqualTo("Location")
-        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isNull()
+        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isEqualTo("true")
     }
 
     @ParameterizedTest
@@ -73,8 +77,29 @@ class WebConfigTest {
         assertThat(allowedMethods)
             .containsExactlyInAnyOrder("GET", "POST", "PUT", "OPTIONS")
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS)).isEqualTo("Content-Type")
-        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isNull()
+        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isEqualTo("true")
         verifyNoInteractions(questionService)
+    }
+
+    @Test
+    fun `관리자 쓰기 사전 요청은 인증 없이 JSON과 CSRF 헤더를 허용한다`() {
+        // given
+        val origin = "http://localhost:5173"
+        val request = options("/api/admin/questions")
+            .header(HttpHeaders.ORIGIN, origin)
+            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "Content-Type,X-CSRF-TOKEN")
+
+        // when
+        val response = mockMvc.perform(request).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(200)
+        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN)).isEqualTo(origin)
+        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS)
+            ?.split(",")?.map(String::trim)).containsExactlyInAnyOrder("Content-Type", "X-CSRF-TOKEN")
+        assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isEqualTo("true")
+        verifyNoInteractions(questionService, userDetailsService)
     }
 
     @ParameterizedTest

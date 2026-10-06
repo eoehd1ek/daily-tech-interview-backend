@@ -5,7 +5,7 @@
 1~9단계의 목표는 질문 조회부터 답변 제출, LLM 평가, 저장된 결과 조회까지의 Core User Flow 완성이다. 관리자 MVP 범위는 10~15단계와 `docs/API.md` 10절의 확정 계약으로 정의한다. 관리자 목록·상세·생성·수정·preview는 구현되었으며 프론트 실제 상세 연결은 미완료다. 체크박스는 구현과 검증을 마친 항목만 완료로 표시한다.
 
 - 작업 전에 `AGENTS.md`와 `docs/API.md`, 관련 기존 코드를 읽는다.
-- 1~9단계에는 관리자/인증 기능을 포함하지 않았다. 10~15단계는 로그인 없는 관리자 질문 생성·수정·저장 전 평가 테스트만 다룬다. Spring Security + 아이디·비밀번호 인증은 MVP 이후 별도 계획이다. 로그인 사용자 기록과 관리자 사용자 평가 기록 조회는 이번 범위에 포함하지 않는다.
+- 1~15단계는 기존 기능 구현 기록이다. 후속 16단계에서 Spring Security/아이디·비밀번호/세션으로 관리자 API를 보호한다. 공개 네 API는 비로그인이며 로그인 사용자 기록/관리자 평가 기록 목록은 추가하지 않는다.
 - 기존 Kotlin, Java 25, Spring Boot 4, Spring AI 2, Spring Data JPA, PostgreSQL, Flyway 구성을 활용한다. 의존성이나 버전을 임의로 변경하지 않는다.
 - Controller / Service / Repository를 기본으로 사용하고 API에 Entity를 직접 노출하지 않는다.
 - 비즈니스 예외는 ApplicationException 또는 DomainException을 거쳐 BusinessException : RuntimeException을 상속하고 ErrorType/오류 코드/안전한 메시지를 정의한다. 예외에 HTTP 상태/Spring HTTP 의존성을 두지 않으며 GlobalExceptionHandler에서 ErrorType을 HTTP 상태로 매핑한다. 선택 조건 없는 @RestControllerAdvice를 유지하고 특정 Controller 전용 Advice는 사용하지 않는다.
@@ -25,7 +25,7 @@
 - 저장된 질문/평가 기준은 정상이라고 가정한다. 후속 관리자 생성·수정·평가 테스트의 외부 입력에는 기준 개수와 배점 검증을 동일하게 적용한다. 일반 사용자 질문 조회나 저장된 기준을 사용하는 LLM 호출 전에는 재검증하지 않는다. 개발자의 직접 DB 입력과 초기 데이터 마이그레이션도 같은 규칙을 지키는 것을 전제로 한다.
 - 아래 각 번호를 한 번의 AI 작업 또는 작은 PR의 기본 단위로 삼는다. 기능 구현과 해당 기능의 기본 테스트를 같은 작업에서 수행한다.
 - 구현하면서 계약 변경이 필요하면 임의로 변경하지 않고 먼저 확인한다. 승인된 변경은 `docs/API.md`와 함께 반영한다.
-- 이번 관리자 MVP에는 인증/인가, Security 의존성, 계정/세션/토큰/CSRF 처리, 동시성 잠금/직렬화/버전 검사/snapshot 읽기를 추가하지 않는다. Redis, 캐싱, RAG, Embedding, Vector Store, 메시지 큐, Microservice, 불필요한 성능 최적화도 추가하지 않는다.
+- 이번 후속 작업은 사용자가 추가한 Security 의존성으로 관리자 계정/세션/CSRF/CORS를 구현한다. 동시성/버전 검사/snapshot/Redis/JWT/RAG/캐싱/메시지 큐는 추가하지 않는다. 아래 초기 무인증 기록은 당시 상태이며 현재 Security 계약은 docs/API.md 상단을 따른다.
 - 프론트엔드 화면 구현은 별도 저장소의 작업이다. 여기에는 백엔드 구현과 연결 검증에 필요한 항목만 둔다.
 
 현재 Question/EvaluationCriterion/EvaluationAttempt 모델과 Repository, 마이그레이션, JPA Auditing 및 PostgreSQL 테스트가 구현되어 있다. 질문 목록/상세, 답변 제출·평가·완료 기록 저장, 저장 결과 조회와 공통 `400`/`404`/`502`/`500` 처리가 구현되어 있다. 외부 LLM을 대체한 실제 HTTP/commit 후 재조회도 검증했다. 실제 브라우저와 유료 공급자 연결은 미검증이다. 스키마는 Flyway로 관리하고 테스트에서는 `validate`로 매핑을 확인한다.
@@ -278,12 +278,20 @@ displayOrder/preview 검증(2026-10-06): 요청 순서는 프론트 지정 값�
 
 완료 기준: 관리자 저장 결과는 공개 API에 반영되고 테스트 결과는 DB에 남지 않으며, 저장/테스트가 같은 평가 규칙을 사용한다. mock/실제 DB/브라우저/실모델/운영 검증 결과를 구분해 기록한다. 프론트 작업은 이번 명세 정리에서 시작하지 않았다.
 
-## MVP 이후 관리자 인증 계획
+## 16. 관리자 세션 인증 및 Security
 
-- [ ] Spring Security + 아이디·비밀번호로 관리자 인증/인가를 구현한다. 이번 MVP 선행 작업으로 수행하거나 미리 의존성을 추가하지 않는다.
-- [ ] 계정 초기 등록/비밀번호 해시/로그인·로그아웃/세션·CSRF/CORS/401·403 API 계약을 후속 인증 작업에서 확정하고 문서를 갱신한다. 프론트 번들에 비밀키를 넣지 않는다.
-- [ ] 관리자 조회/쓰기/유료 preview의 서버 권한 검증과 인증 없는 접근 거부를 테스트한다. 관리자 기능을 보호 없이 인터넷에 공개하지 않도록 배포 범위를 검토한다.
+- [x] 계정 app_user(id/login_id/password_hash/role)와 새 Flyway V3.0.0을 추가했다. 로그인 ID는 유일하며 AdminAccountInitializer가 ADMIN_LOGIN_ID/ADMIN_PASSWORD를 받아 최초 생성/BCrypt 저장한다. 기존 동일 ID ADMIN은 비밀번호를 검증/갱신하지 않고 유지한다. 초기 ID는 매 실행 필수(비공백/최대200), 신규 비밀번호는 비공백/최대72 UTF-8 bytes다. 동일 ID 비ADMIN/잘못된 초기 설정은 안전한 시작 오류다.
+- [x] MVC WebConfig를 제거하고 SecurityConfig로 CORS를 옮겼다. 명시적 Origin/credentials/Content-Type·X-CSRF-TOKEN/Location, 익명 preflight를 적용한다. 공개 네 API의 메서드/경로만 익명 허용하고 /api/admin/** ADMIN, 나머지 기본 거부다. ERROR 내부 dispatch만 원래 공개 API 오류 처리를 위한 예외이며 외부 /error 요청은 허용하지 않는다.
+- [x] JSON 로그인/CSRF 토큰 조회/me/로그아웃 계약을 API 문서 상단에 확정했다. 세션 고정 방어/명시적 SecurityContext 저장/로그인 CSRF 토큰 교체/로그아웃 세션 무효화·쿠키 삭제를 적용했다. 인증/권한/CSRF 필터 오류도 code/message JSON이다.
+- [x] 로그인·로그아웃·관리자 쓰기의 세션 CSRF 보호와 공개 답변 POST의 예외를 적용했다. 서버 메모리 세션 유휴30분/쿠키전용/HttpOnly/SameSite=Lax, 운영 SESSION_COOKIE_SECURE=true 설정을 추가했다. JWT/기본 폼/HTTP Basic/remember-me/Redis/회원가입은 없다.
+- [x] 기존 관리자 Controller 테스트에 ADMIN/CSRF, 공개 테스트에 실제 정책을 적용했다. CORS 테스트를 SecurityConfig 책임으로 이동했다. 계정 최초 생성/기존 해시 보존/충돌/비밀번호 길이와 Repository 로그인 조회, 공개 허용/ADMIN 권한/기본차단/CSRF/로그인·세션·로그아웃을 검증했다. 일반 오류 Handler의 임의 /test/**만 테스트 전용 보안체인으로 예외 처리하며 운영 범위를 넓히지 않는다.
+- [ ] 프론트 병렬 작업에서 auth DTO/credentials/CSRF/로그인 화면/admin 가드/공개 관리자 링크 제거/오류 구분/입력 보존을 적용하고 실제 브라우저 쿠키 세션을 연결 검증한다. 이번 작업에서는 front 코드/문서를 변경하지 않는다.
+- [ ] 배포 HTTPS/Secure 쿠키/Origin/프록시 전달 헤더/원본 차단/로그인과 공개 유료 호출의 빈도 제한을 확인한다. 세션 보호가 평가 비용 제한이나 개인 답변 소유자 검증을 제공하지는 않는다.
+
+진행 기록: PasswordEncoder.encode의 nullable 반환 시그니처에 맞춰 초기 저장과 테스트에 checkNotNull을 적용했다. 전체 첫 실행에서는 Docker 연결 불가로 DB 테스트17개가 실패했고 나머지 Security/Controller 테스트는 통과했다. Docker info에서 엔진 사용 가능 확인 후 재실행한 clean build가 통과했다. 추가로 기존 CRUD 통합 테스트의 테스트 전용 관리자 우회 체인을 제거하고 실제 DB 초기 관리자→JSON 로그인→쿠키 세션→CSRF 갱신→관리자 POST/PUT 경로로 변경하여 검증한다. 실제 개발 DB/LLM/서버 재시작/프론트 변경은 없다.
+
+최종 검증: 인증 우회 제거 후 `.\gradlew.bat clean build`가 다시 통과했다. 실제 DB 초기화/해시 인증과 cookie 기반 관리자 생성·수정까지 기존 통합 테스트로 연결 검증했다. MockMvc에서는 익명 공개/API 기본차단/ADMIN 역할/CSRF와 sessionId 교체/로그아웃을 확인했다. 실제 `.env`는 변경하지 않고 `.env.example`에 새 변수 예시만 추가했다. 첫 실행 전 ADMIN_LOGIN_ID/ADMIN_PASSWORD를 직접 주입해야 하며 운영에서는 SESSION_COOKIE_SECURE=true를 사용한다. 프론트 병렬 작업 인계는 API 문서 상단 계약을 따른다.
 
 ## 배포 및 후속 확인 사항
 
-`docs/API.md` 9절과 10.7~10.8을 참조한다. 관리자 입력 길이/개수와 인증 생략/후속 아이디·비밀번호 인증 방향은 확정했다. 전체 본문은 nginx에서 제한하고 초과 시 413이며, 상한 수치(256 KiB 권장안)는 배포 작업에서 확정한다. JSON 크기 제한을 위해 Tomcat maxPostSize/maxSwallowSize/multipart 설정이나 커스텀 Filter를 추가하지 않는다. 익명 기록 보관 정책은 별도 결정한다. 운영 주소는 프론트 `https://tech.eoehd1ek.com`, 백엔드 `https://techapi.eoehd1ek.com`이며 배포 연결은 미검증이다. CODEX_LB/gpt-6-sol, 기존 모델/endpoint 환경변수, Spring AI 기본 timeout/retry, 네이티브 Schema, 실제 호출 검증 보류와 프론트 180초 대기 종료 방향은 유지한다.
+`docs/API.md` 상단 Security 계약과 9절/10.7~10.8을 참조한다. 관리자 입력 길이/개수와 아이디·비밀번호 세션 인증은 구현했다. ADMIN_LOGIN_ID는 매 실행 필요, ADMIN_PASSWORD는 해당 ID의 신규 생성에 필요하며 기존 ADMIN은 변경하지 않는다. 초기 ID를 바꾸면 다른 계정을 생성할 수 있고 비밀번호 변경 기능은 없다. 운영은 SESSION_COOKIE_SECURE=true와 CORS_ALLOWED_ORIGINS=https://tech.eoehd1ek.com을 적용한다. 전체 본문 nginx 제한/413 및 상한(256 KiB 권장)은 배포 작업이다. 익명 평가 기록 보관/공개성과 비용 보호는 별도 확인한다. 백엔드 주소는 https://techapi.eoehd1ek.com이며 실제 배포/브라우저 세션 연결은 미검증이다. 모델/endpoint와 timeout/retry/프론트180초 방향은 변경하지 않는다.
