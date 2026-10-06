@@ -1,77 +1,79 @@
 plugins {
-	id 'org.jetbrains.kotlin.jvm' version '2.3.21'
-	id 'org.jetbrains.kotlin.plugin.spring' version '2.3.21'
-	id 'org.springframework.boot' version '4.1.1'
-	id 'io.spring.dependency-management' version '1.1.7'
-	id 'org.jetbrains.kotlin.plugin.jpa' version '2.3.21'
+    id 'org.jetbrains.kotlin.jvm' version '2.3.21'
+    id 'org.jetbrains.kotlin.plugin.spring' version '2.3.21'
+    id 'org.springframework.boot' version '4.1.1'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.jetbrains.kotlin.plugin.jpa' version '2.3.21'
 }
 
 group = 'com.eoehd1ek'
 version = '0.0.1'
 
 java {
-	toolchain {
-		languageVersion = JavaLanguageVersion.of(25)
-	}
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
 repositories {
-	mavenCentral()
+    mavenCentral()
 }
 
 ext {
-	set('springAiVersion', "2.0.1")
+    set('springAiVersion', "2.0.1")
 }
 
 dependencies {
-	// Basic
-	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.jetbrains.kotlin:kotlin-reflect'
-	implementation 'tools.jackson.module:jackson-module-kotlin'
+    // Basic
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.jetbrains.kotlin:kotlin-reflect'
+    implementation 'tools.jackson.module:jackson-module-kotlin'
 
-	// Database
-	implementation 'org.springframework.boot:spring-boot-starter-flyway'
-	implementation 'org.flywaydb:flyway-database-postgresql'
-	runtimeOnly 'org.postgresql:postgresql'
 
-	// Ai
-	implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+    // Database
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
 
-	// Test Basic
-	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+    // Ai
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
-	// Test Database
-	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
-	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-	testImplementation 'org.testcontainers:testcontainers-postgresql'
+    // Test Basic
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-	testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // Test Database
+    testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
 }
 
 dependencyManagement {
-	imports {
-		mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
-	}
+    imports {
+        mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+    }
 }
 
 kotlin {
-	compilerOptions {
-		freeCompilerArgs.addAll '-Xjsr305=strict', '-Xannotation-default-target=param-property'
-	}
+    compilerOptions {
+        freeCompilerArgs.addAll '-Xjsr305=strict', '-Xannotation-default-target=param-property'
+    }
 }
 
 allOpen {
-	annotation 'jakarta.persistence.Entity'
-	annotation 'jakarta.persistence.MappedSuperclass'
-	annotation 'jakarta.persistence.Embeddable'
+    annotation 'jakarta.persistence.Entity'
+    annotation 'jakarta.persistence.MappedSuperclass'
+    annotation 'jakarta.persistence.Embeddable'
 }
 
 tasks.named('test') {
-	useJUnitPlatform()
+    useJUnitPlatform()
 }
