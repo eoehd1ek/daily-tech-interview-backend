@@ -140,6 +140,10 @@ GET 단계 검증(2026-10-05): `.\gradlew.bat clean build` 성공, 전체 216개
 
 ## 8. LLM 실패 및 공통 예외 처리
 
+Service/Controller 책임 정리: submit → submitAnswer, preview → previewEvaluation, EvaluationAttemptRequest → SubmitAnswerRequest로 변경한다. 나머지 HTTP DTO 이름과 API 형식은 유지한다. submitAnswer/getAttempt는 Application의 EvaluationAttemptResult, previewEvaluation은 title/content/criteria Spec/answer를 받아 EvaluatedAnswerResult를 반환한다. 두 Controller가 요청·응답 DTO를 변환하고 preview 기준 정렬/임시 ID 매핑을 수행한다. EvaluationService에서 presentation DTO 의존성을 제거하며 Factory/Mapper나 새로운 의존성은 추가하지 않는다.
+
+책임 정리 검증: 기존 Service/두 Controller 테스트를 새 Application 결과·메서드명에 맞춰 수정하고 preview 정렬/임시 ID 변환을 기존 성공 테스트에서 확인했다. Service 테스트는 presentation DTO를 사용하지 않고 전달한 기준 Spec을 그대로 평가하는 동작을 확인한다. `.\gradlew.bat clean build`가 통과했고 구 메서드 호출/요청 클래스명/EvaluationService의 presentation 참조가 남아 있지 않다. HTTP 경로·JSON·상태·Location/검증/저장·비저장 정책은 유지하며 실제 LLM은 호출하지 않았다.
+
 평가 책임 분리(2026-10-06): 기존 EvaluationResponseValidator를 제거하고 JSON 파싱/형식 검증은 infrastructure.llm.LlmEvaluationResponseParser, 기준 개수/ID/중복/점수 범위는 application.validation.EvaluationProviderResultValidator, 점수 판정은 domain.EvaluationResult.fromScore로 나눴다. EvaluationCriterionSpec와 EvaluationProviderResult는 application.model에, EvaluationProvider는 application.port에 둔다. Service는 raw JSON/Jackson/JsonNode/Spring AI/LLM 구현을 모르고 검증 후 점수 합산만 수행한다. LlmEvaluationClient가 Provider를 구현하고 파싱 실패를 안전한 LlmEvaluationFailedException으로 변환한다. port.out/port.out.model이나 LLM parser/exception 하위 패키지는 사용하지 않고 작은 인터페이스 하나만 유지한다. 총 배점 100인 정상 저장 기준 전제와 공개 API/preview 계약/기존 모델 설정·Schema·timeout/retry는 유지한다. Factory/Calculator/Mapper나 새 의존성은 추가하지 않았다.
 
 책임 분리 검증: 기존 Validator 테스트를 parser/application.validation/domain 테스트로 이관하고 Service mock은 정규화된 Provider 결과를 반환하도록 수정했다. LLM 클라이언트의 파싱 실패→안전한 평가 실패 테스트도 추가했다. 최초 compileKotlin에서 Jackson JsonNode의 map 메서드와 Kotlin 컬렉션 map의 충돌로 타입 오류가 발생해 배열을 toList로 변환 후 매핑하도록 수정했다. 이후 `.\gradlew.bat clean build`와 기존 mock 모델 기반 Core Flow가 통과했다. Application의 Jackson/JsonNode/Spring AI/LLM 구현 참조는 없으며 실제 LLM은 호출하지 않았다.

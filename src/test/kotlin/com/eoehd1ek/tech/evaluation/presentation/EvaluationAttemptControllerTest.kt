@@ -2,6 +2,7 @@ package com.eoehd1ek.tech.evaluation.presentation
 
 import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.application.result.EvaluationAttemptResult
 import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
@@ -45,7 +46,7 @@ class EvaluationAttemptControllerTest {
         val questionId = 10L
         val answer = "  첫 줄\n둘째 줄\t\"인용\"과 \\ 경로  "
         val attempt = attemptResponse(questionId, answer)
-        given(evaluationService.submit(questionId, answer)).willReturn(attempt)
+        given(evaluationService.submitAnswer(questionId, answer)).willReturn(attemptResult(attempt))
         val request = post("/api/questions/{questionId}/evaluation-attempts", questionId)
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(mapOf("answer" to answer)))
@@ -55,7 +56,7 @@ class EvaluationAttemptControllerTest {
 
         // then
         assertCreatedResponse(response, attempt)
-        verify(evaluationService).submit(questionId, answer)
+        verify(evaluationService).submitAnswer(questionId, answer)
         verifyNoMoreInteractions(evaluationService)
     }
 
@@ -65,7 +66,7 @@ class EvaluationAttemptControllerTest {
         // given
         val answer = "경계값 답변"
         val attempt = attemptResponse(questionId, answer)
-        given(evaluationService.submit(questionId, answer)).willReturn(attempt)
+        given(evaluationService.submitAnswer(questionId, answer)).willReturn(attemptResult(attempt))
         val request = post("/api/questions/{questionId}/evaluation-attempts", questionId)
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(mapOf("answer" to answer)))
@@ -75,7 +76,7 @@ class EvaluationAttemptControllerTest {
 
         // then
         assertCreatedResponse(response, attempt)
-        verify(evaluationService).submit(questionId, answer)
+        verify(evaluationService).submitAnswer(questionId, answer)
         verifyNoMoreInteractions(evaluationService)
     }
 
@@ -136,7 +137,7 @@ class EvaluationAttemptControllerTest {
         val questionId = 10L
         val answer = character.repeat(3_000 / character.length)
         val attempt = attemptResponse(questionId, answer)
-        given(evaluationService.submit(questionId, answer)).willReturn(attempt)
+        given(evaluationService.submitAnswer(questionId, answer)).willReturn(attemptResult(attempt))
         val request = post("/api/questions/{questionId}/evaluation-attempts", questionId)
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(mapOf("answer" to answer)))
@@ -147,7 +148,7 @@ class EvaluationAttemptControllerTest {
         // then
         assertThat(answer.length).isEqualTo(3_000)
         assertCreatedResponse(response, attempt)
-        verify(evaluationService).submit(questionId, answer)
+        verify(evaluationService).submitAnswer(questionId, answer)
         verifyNoMoreInteractions(evaluationService)
     }
 
@@ -191,7 +192,7 @@ class EvaluationAttemptControllerTest {
         // given
         val questionId = 10L
         val answer = "답변"
-        given(evaluationService.submit(questionId, answer)).willThrow(QuestionNotFoundException())
+        given(evaluationService.submitAnswer(questionId, answer)).willThrow(QuestionNotFoundException())
         val request = post("/api/questions/{questionId}/evaluation-attempts", questionId)
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(mapOf("answer" to answer)))
@@ -201,7 +202,7 @@ class EvaluationAttemptControllerTest {
 
         // then
         assertErrorResponse(response, 404, "QUESTION_NOT_FOUND", "질문을 찾을 수 없습니다.")
-        verify(evaluationService).submit(questionId, answer)
+        verify(evaluationService).submitAnswer(questionId, answer)
         verifyNoMoreInteractions(evaluationService)
     }
 
@@ -210,7 +211,7 @@ class EvaluationAttemptControllerTest {
         // given
         val questionId = 10L
         val answer = "답변"
-        given(evaluationService.submit(questionId, answer)).willThrow(LlmEvaluationFailedException())
+        given(evaluationService.submitAnswer(questionId, answer)).willThrow(LlmEvaluationFailedException())
         val request = post("/api/questions/{questionId}/evaluation-attempts", questionId)
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(mapOf("answer" to answer)))
@@ -220,7 +221,7 @@ class EvaluationAttemptControllerTest {
 
         // then
         assertErrorResponse(response, 502, "LLM_EVALUATION_FAILED", "평가 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.")
-        verify(evaluationService).submit(questionId, answer)
+        verify(evaluationService).submitAnswer(questionId, answer)
         verifyNoMoreInteractions(evaluationService)
     }
 
@@ -236,7 +237,7 @@ class EvaluationAttemptControllerTest {
         } else {
             IllegalStateException(internalMessage)
         }
-        given(evaluationService.submit(questionId, answer)).willThrow(exception)
+        given(evaluationService.submitAnswer(questionId, answer)).willThrow(exception)
         val request = post("/api/questions/{questionId}/evaluation-attempts", questionId)
             .contentType(MediaType.APPLICATION_JSON)
             .content(objectMapper.writeValueAsString(mapOf("answer" to answer)))
@@ -247,7 +248,7 @@ class EvaluationAttemptControllerTest {
         // then
         assertErrorResponse(response, 500, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.")
         assertThat(response.contentAsString).doesNotContain(internalMessage, "private-answer", "secret-key", "private-criterion")
-        verify(evaluationService).submit(questionId, answer)
+        verify(evaluationService).submitAnswer(questionId, answer)
         verifyNoMoreInteractions(evaluationService)
     }
 
@@ -262,7 +263,7 @@ class EvaluationAttemptControllerTest {
         }
         val answer = "  첫 줄\n둘째 줄\t\"인용\"과 \\ 경로 \uD83D\uDE00  "
         val attempt = attemptResponse(10L, answer).copy(score = score, result = result)
-        given(evaluationService.getAttempt(attempt.id)).willReturn(attempt)
+        given(evaluationService.getAttempt(attempt.id)).willReturn(attemptResult(attempt))
         val request = get("/api/evaluation-attempts/{attemptId}", attempt.id)
 
         // when
@@ -295,7 +296,7 @@ class EvaluationAttemptControllerTest {
     fun `평가 기록 ID 범위의 최솟값과 최댓값은 결과 조회를 허용한다`(attemptId: Long) {
         // given
         val attempt = attemptResponse(10L, "경계값 답변").copy(id = attemptId)
-        given(evaluationService.getAttempt(attemptId)).willReturn(attempt)
+        given(evaluationService.getAttempt(attemptId)).willReturn(attemptResult(attempt))
         val request = get("/api/evaluation-attempts/{attemptId}", attemptId)
 
         // when
@@ -362,6 +363,11 @@ class EvaluationAttemptControllerTest {
         weaknesses = "격리 수준 설명이 부족합니다.",
         improvements = "격리 수준을 비교해보세요.",
         createdAt = Instant.parse("2026-10-05T04:00:00.123456Z"),
+    )
+
+    private fun attemptResult(response: EvaluationAttemptResponse) = EvaluationAttemptResult(
+        response.id, response.questionId, response.questionTitle, response.answer, response.score,
+        response.result, response.strengths, response.weaknesses, response.improvements, response.createdAt,
     )
 
     private fun assertCreatedResponse(response: MockHttpServletResponse, attempt: EvaluationAttemptResponse) {

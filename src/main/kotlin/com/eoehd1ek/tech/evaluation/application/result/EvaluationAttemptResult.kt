@@ -1,10 +1,10 @@
-package com.eoehd1ek.tech.evaluation.presentation.response
+package com.eoehd1ek.tech.evaluation.application.result
 
-import com.eoehd1ek.tech.evaluation.application.result.EvaluationAttemptResult
+import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import java.time.Instant
 
-data class EvaluationAttemptResponse(
+data class EvaluationAttemptResult(
     val id: Long,
     val questionId: Long,
     val questionTitle: String,
@@ -17,18 +17,18 @@ data class EvaluationAttemptResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(attempt: EvaluationAttemptResult): EvaluationAttemptResponse =
-            EvaluationAttemptResponse(
-                id = attempt.id,
+        fun from(attempt: EvaluationAttempt, questionTitle: String): EvaluationAttemptResult =
+            EvaluationAttemptResult(
+                id = checkNotNull(attempt.id),
                 questionId = attempt.questionId,
-                questionTitle = attempt.questionTitle,
+                questionTitle = questionTitle,
                 answer = attempt.answer,
                 score = attempt.score,
                 result = attempt.result,
                 strengths = attempt.strengths,
                 weaknesses = attempt.weaknesses,
                 improvements = attempt.improvements,
-                createdAt = attempt.createdAt,
+                createdAt = checkNotNull(attempt.createdAt),
             )
     }
 }

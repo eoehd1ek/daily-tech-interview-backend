@@ -7,17 +7,15 @@ import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
+import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
+import com.eoehd1ek.tech.evaluation.application.result.EvaluationAttemptResult
 import com.eoehd1ek.tech.evaluation.application.validation.EvaluationProviderResultValidator
 import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
-import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
-import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
-import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
 import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
 import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
-import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
@@ -83,11 +81,11 @@ class EvaluationServiceTest {
         given(attemptRepository.save(any(EvaluationAttempt::class.java))).willReturn(saved)
 
         // when
-        val result = service.submit(questionId, answer)
+        val result = service.submitAnswer(questionId, answer)
 
         // then
         assertThat(result).isEqualTo(
-            EvaluationAttemptResponse(
+            EvaluationAttemptResult(
                 42L, questionId, question.title, answer, 85, EvaluationResult.PASS,
                 "장점", "단점", "개선점", requireNotNull(saved.createdAt),
             )
@@ -114,7 +112,7 @@ class EvaluationServiceTest {
         )
 
         // when
-        val action = { service.submit(questionId, answer) }
+        val action = { service.submitAnswer(questionId, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(LlmEvaluationFailedException::class.java).hasNoCause()
@@ -132,7 +130,7 @@ class EvaluationServiceTest {
         )
 
         // when
-        val action = { service.submit(questionId, answer) }
+        val action = { service.submitAnswer(questionId, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(LlmEvaluationFailedException::class.java)
@@ -147,7 +145,7 @@ class EvaluationServiceTest {
         given(questionRepository.findById(questionId)).willReturn(Optional.empty())
 
         // when
-        val action = { service.submit(questionId, answer) }
+        val action = { service.submitAnswer(questionId, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(QuestionNotFoundException::class.java)
@@ -167,7 +165,7 @@ class EvaluationServiceTest {
         }
 
         // when
-        val exception = catchThrowable { service.submit(questionId, answer) }
+        val exception = catchThrowable { service.submitAnswer(questionId, answer) }
 
         // then
         assertThat(exception).isSameAs(failure)
@@ -184,8 +182,8 @@ class EvaluationServiceTest {
             .willReturn(savedAttempt(42L), savedAttempt(43L))
 
         // when
-        val first = service.submit(questionId, answer)
-        val second = service.submit(questionId, answer)
+        val first = service.submitAnswer(questionId, answer)
+        val second = service.submitAnswer(questionId, answer)
 
         // then
         assertThat(listOf(first.id, second.id)).containsExactly(42L, 43L)
@@ -206,7 +204,7 @@ class EvaluationServiceTest {
         given(attemptRepository.save(any(EvaluationAttempt::class.java))).willThrow(failure)
 
         // when
-        val exception = catchThrowable { service.submit(questionId, answer) }
+        val exception = catchThrowable { service.submitAnswer(questionId, answer) }
 
         // then
         assertThat(exception).isSameAs(failure)
@@ -225,7 +223,7 @@ class EvaluationServiceTest {
         given(attemptRepository.save(any(EvaluationAttempt::class.java))).willReturn(saved)
 
         // when
-        val action = { service.submit(questionId, answer) }
+        val action = { service.submitAnswer(questionId, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(IllegalStateException::class.java)
@@ -258,7 +256,7 @@ class EvaluationServiceTest {
 
         // then
         assertThat(response).isEqualTo(
-            EvaluationAttemptResponse(
+            EvaluationAttemptResult(
                 42L, questionId, currentQuestion.title, answer, 7, EvaluationResult.PASS,
                 saved.strengths, saved.weaknesses, saved.improvements, requireNotNull(saved.createdAt),
             )
@@ -329,33 +327,30 @@ class EvaluationServiceTest {
     }
 
     @Test
-    fun `저장 전 평가는 지정 순서의 현재 입력으로 평가하고 Repository를 사용하지 않는다`() {
+    fun `저장 전 평가는 전달된 기준 ID와 순서 및 현재 입력으로 평가하고 Repository를 사용하지 않는다`() {
         // given
-        val request = EvaluationPreviewRequest(
-            " 미저장 제목 ", "미저장 본문", listOf(
-                AdminCriterionRequest("나중 기준", 60, 20), AdminCriterionRequest("먼저 기준", 40, -5),
-            ), answer
-        )
+        val title = " 미저장 제목 "
+        val content = "미저장 본문"
         val previewCriteria = listOf(
-            EvaluationCriterionSpec(1L, "먼저 기준", 40), EvaluationCriterionSpec(2L, "나중 기준", 60),
+            EvaluationCriterionSpec(20L, "첫번째 기준", 40), EvaluationCriterionSpec(10L, "두번째 기준", 60),
         )
-        given(llmClient.evaluate(request.title, request.content, previewCriteria, answer)).willReturn(
+        given(llmClient.evaluate(title, content, previewCriteria, answer)).willReturn(
             EvaluationProviderResult(listOf(
-                EvaluationProviderResult.CriterionResult(2L, 50, "두번째"),
-                EvaluationProviderResult.CriterionResult(1L, 30, "첫번째"),
+                EvaluationProviderResult.CriterionResult(10L, 50, "두번째"),
+                EvaluationProviderResult.CriterionResult(20L, 30, "첫번째"),
             ), "장점", "단점", "개선점"),
         )
 
         // when
-        val result = service.preview(request)
+        val result = service.previewEvaluation(title, content, previewCriteria, answer)
 
         // then
         assertThat(result).isEqualTo(
-            EvaluationPreviewResponse(
-                request.title, answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+            EvaluatedAnswerResult(
+                80, EvaluationResult.PASS, "장점", "단점", "개선점",
             )
         )
-        verify(llmClient).evaluate(request.title, request.content, previewCriteria, answer)
+        verify(llmClient).evaluate(title, content, previewCriteria, answer)
         verifyNoInteractions(questionRepository, criterionRepository, attemptRepository)
     }
 
@@ -363,23 +358,24 @@ class EvaluationServiceTest {
     @ValueSource(booleans = [true, false])
     fun `저장 전 평가의 모델 오류와 잘못된 응답은 저장 없이 평가 실패로 처리한다`(callFails: Boolean) {
         // given
-        val request = EvaluationPreviewRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 0)), answer)
+        val title = "제목"
+        val content = "본문"
         val criteria = listOf(EvaluationCriterionSpec(1L, "기준", 100))
         if (callFails) {
-            given(llmClient.evaluate(request.title, request.content, criteria, answer))
+            given(llmClient.evaluate(title, content, criteria, answer))
                 .willThrow(LlmEvaluationFailedException())
         } else {
-            given(llmClient.evaluate(request.title, request.content, criteria, answer)).willReturn(
+            given(llmClient.evaluate(title, content, criteria, answer)).willReturn(
                 EvaluationProviderResult(emptyList(), "장점", "단점", "개선점"),
             )
         }
 
         // when
-        val action = { service.preview(request) }
+        val action = { service.previewEvaluation(title, content, criteria, answer) }
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(LlmEvaluationFailedException::class.java)
-        verify(llmClient).evaluate(request.title, request.content, criteria, answer)
+        verify(llmClient).evaluate(title, content, criteria, answer)
         verifyNoMoreInteractions(llmClient)
         verifyNoInteractions(questionRepository, criterionRepository, attemptRepository)
     }

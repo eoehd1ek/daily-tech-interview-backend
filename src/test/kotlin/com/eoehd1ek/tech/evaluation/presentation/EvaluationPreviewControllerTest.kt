@@ -2,6 +2,8 @@ package com.eoehd1ek.tech.evaluation.presentation
 
 import com.eoehd1ek.tech.evaluation.application.EvaluationService
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
 import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
@@ -33,17 +35,24 @@ class EvaluationPreviewControllerTest {
     private lateinit var service: EvaluationService
 
     @Test
-    fun `저장 전 평가 요청은 저장 ID 없이 총점 판정과 종합 피드백을 반환한다`() {
+    fun `저장 전 평가 요청은 기준을 정렬해 임시 ID로 평가하고 저장 ID 없이 결과를 반환한다`() {
         // given
         val request = EvaluationPreviewRequest(
-            "제목", "본문", listOf(AdminCriterionRequest("기준", 100, 0)),
+            "제목", "본문", listOf(
+                AdminCriterionRequest("나중 기준", 60, 20), AdminCriterionRequest("먼저 기준", 40, -5),
+            ),
             "  답변\n원문  "
+        )
+        val criteria = listOf(
+            EvaluationCriterionSpec(1L, "먼저 기준", 40), EvaluationCriterionSpec(2L, "나중 기준", 60),
         )
         val expected = EvaluationPreviewResponse(
             request.title, request.answer, 85, EvaluationResult.PASS,
             "장점", "단점", "개선점"
         )
-        given(service.preview(request)).willReturn(expected)
+        given(service.previewEvaluation(request.title, request.content, criteria, request.answer)).willReturn(
+            EvaluatedAnswerResult(85, EvaluationResult.PASS, "장점", "단점", "개선점"),
+        )
 
         // when
         val response = mockMvc.perform(post("/api/admin/questions/evaluation-preview")
@@ -57,7 +66,7 @@ class EvaluationPreviewControllerTest {
         assertThat(body.propertyNames()).containsExactlyInAnyOrder(
             "questionTitle", "answer", "score", "result", "strengths", "weaknesses", "improvements",
         )
-        verify(service).preview(request)
+        verify(service).previewEvaluation(request.title, request.content, criteria, request.answer)
     }
 
     @ParameterizedTest
@@ -80,14 +89,15 @@ class EvaluationPreviewControllerTest {
     fun `preview 답변은 기본 Jackson 변환과 최대 길이를 허용한다`() {
         // given
         val criterion = listOf(AdminCriterionRequest("기준", 100, 1))
+        val criteria = listOf(EvaluationCriterionSpec(1L, "기준", 100))
         val requests = listOf(
             EvaluationPreviewRequest("제목", "본문", criterion, "123"),
             EvaluationPreviewRequest("제목", "본문", criterion, "가".repeat(3000)),
         )
         requests.forEach {
-            given(service.preview(it)).willReturn(
-                EvaluationPreviewResponse(
-                    it.title, it.answer, 80, EvaluationResult.PASS, "장점", "단점", "개선점",
+            given(service.previewEvaluation(it.title, it.content, criteria, it.answer)).willReturn(
+                EvaluatedAnswerResult(
+                    80, EvaluationResult.PASS, "장점", "단점", "개선점",
                 )
             )
         }
@@ -105,14 +115,16 @@ class EvaluationPreviewControllerTest {
 
         // then
         assertThat(responses.map { it.status }).containsExactly(200, 200)
-        requests.forEach { verify(service).preview(it) }
+        requests.forEach { verify(service).previewEvaluation(it.title, it.content, criteria, it.answer) }
     }
 
     @Test
     fun `preview 평가 실패는 기존 공통 평가 오류를 반환한다`() {
         // given
         val request = EvaluationPreviewRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 1)), "답변")
-        given(service.preview(request)).willThrow(LlmEvaluationFailedException())
+        val criteria = listOf(EvaluationCriterionSpec(1L, "기준", 100))
+        given(service.previewEvaluation(request.title, request.content, criteria, request.answer))
+            .willThrow(LlmEvaluationFailedException())
 
         // when
         val response = mockMvc.perform(post("/api/admin/questions/evaluation-preview")

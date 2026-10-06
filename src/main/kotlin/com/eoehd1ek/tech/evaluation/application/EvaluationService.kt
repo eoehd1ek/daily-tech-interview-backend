@@ -3,14 +3,12 @@ package com.eoehd1ek.tech.evaluation.application
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
 import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
+import com.eoehd1ek.tech.evaluation.application.result.EvaluationAttemptResult
 import com.eoehd1ek.tech.evaluation.application.validation.EvaluationProviderResultValidator
 import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
 import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
-import com.eoehd1ek.tech.evaluation.presentation.request.EvaluationPreviewRequest
-import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationAttemptResponse
-import com.eoehd1ek.tech.evaluation.presentation.response.EvaluationPreviewResponse
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
 import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
@@ -27,7 +25,7 @@ class EvaluationService(
     private val attemptRepository: EvaluationAttemptRepository,
 ) {
 
-    fun submit(questionId: Long, answer: String): EvaluationAttemptResponse {
+    fun submitAnswer(questionId: Long, answer: String): EvaluationAttemptResult {
         val question = findQuestion(questionId)
         val criteria = findCriteria(questionId)
 
@@ -44,39 +42,31 @@ class EvaluationService(
             evaluation = evaluation
         )
 
-        return EvaluationAttemptResponse.from(
+        return EvaluationAttemptResult.from(
             attempt,
             question.title
         )
     }
 
-    fun preview(request: EvaluationPreviewRequest): EvaluationPreviewResponse {
-        val criteria = createPreviewCriteria(request)
-
-        val evaluation = evaluateAnswer(
-            title = request.title,
-            content = request.content,
+    fun previewEvaluation(
+        title: String,
+        content: String,
+        criteria: List<EvaluationCriterionSpec>,
+        answer: String,
+    ): EvaluatedAnswerResult =
+        evaluateAnswer(
+            title = title,
+            content = content,
             criteria = criteria,
-            answer = request.answer,
+            answer = answer,
         )
-
-        return EvaluationPreviewResponse(
-            questionTitle = request.title,
-            answer = request.answer,
-            score = evaluation.score,
-            result = evaluation.result,
-            strengths = evaluation.strengths,
-            weaknesses = evaluation.weaknesses,
-            improvements = evaluation.improvements,
-        )
-    }
 
     @Transactional(readOnly = true)
-    fun getAttempt(attemptId: Long): EvaluationAttemptResponse {
+    fun getAttempt(attemptId: Long): EvaluationAttemptResult {
         val attempt = findAttempt(attemptId)
         val question = findQuestionForAttempt(attempt.questionId)
 
-        return EvaluationAttemptResponse.from(
+        return EvaluationAttemptResult.from(
             attempt,
             question.title
         )
@@ -107,21 +97,6 @@ class EvaluationService(
             improvements = providerResult.improvements,
         )
     }
-
-    private fun createPreviewCriteria(
-        request: EvaluationPreviewRequest,
-    ): List<EvaluationCriterionSpec> =
-        request.criteria
-            .map { requireNotNull(it) }
-            .sortedBy { it.displayOrder }
-            .mapIndexed { index, criterion ->
-                EvaluationCriterionSpec(
-                    id = index + 1L,
-                    content = criterion.content,
-                    maxScore = criterion.maxScore,
-                )
-            }
-
 
     private fun saveAttempt(
         questionId: Long,

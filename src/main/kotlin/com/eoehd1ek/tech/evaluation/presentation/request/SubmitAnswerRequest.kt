@@ -8,7 +8,7 @@ import tools.jackson.databind.DeserializationContext
 import tools.jackson.databind.ValueDeserializer
 import tools.jackson.databind.annotation.JsonDeserialize
 
-data class EvaluationAttemptRequest(
+data class SubmitAnswerRequest(
     @field:NotBlank
     @field:Size(max = 3000)
     @field:JsonDeserialize(using = AnswerDeserializer::class)
