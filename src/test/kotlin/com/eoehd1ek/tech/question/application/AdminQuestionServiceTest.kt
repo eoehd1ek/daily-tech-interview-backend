@@ -1,6 +1,7 @@
 package com.eoehd1ek.tech.question.application
 
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.application.result.AdminQuestionDetailResult
 import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
@@ -41,6 +42,40 @@ class AdminQuestionServiceTest {
 
     @Captor
     private lateinit var criteriaCaptor: ArgumentCaptor<List<EvaluationCriterion>>
+
+    @Test
+    fun `관리자 상세 조회는 질문과 해당 기준을 정렬 조회하여 반환한다`() {
+        // given
+        val question = Question("제목", "본문")
+        ReflectionTestUtils.setField(question, "id", 10L)
+        val criteria = listOf(
+            EvaluationCriterion(10L, "첫 기준", 40, 1),
+            EvaluationCriterion(10L, "둘째 기준", 60, 2),
+        )
+        given(questionRepository.findById(10L)).willReturn(Optional.of(question))
+        given(criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(10L)).willReturn(criteria)
+
+        // when
+        val result = service.getQuestion(10L)
+
+        // then
+        assertThat(result).usingRecursiveComparison().isEqualTo(AdminQuestionDetailResult(question, criteria))
+        verify(questionRepository).findById(10L)
+        verify(criterionRepository).findAllByQuestionIdOrderByDisplayOrderAscIdAsc(10L)
+    }
+
+    @Test
+    fun `없는 관리자 상세 조회는 기준을 조회하지 않고 질문 없음 예외를 반환한다`() {
+        // given
+        given(questionRepository.findById(10L)).willReturn(Optional.empty())
+
+        // when
+        val action = { service.getQuestion(10L) }
+
+        // then
+        assertThatThrownBy { action() }.isInstanceOf(QuestionNotFoundException::class.java)
+        verifyNoInteractions(criterionRepository)
+    }
 
     @Test
     fun `질문 생성은 원문과 지정한 순서를 저장하고 순서대로 응답한다`() {

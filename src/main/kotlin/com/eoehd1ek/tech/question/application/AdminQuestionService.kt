@@ -1,6 +1,7 @@
 package com.eoehd1ek.tech.question.application
 
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.application.result.AdminQuestionDetailResult
 import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
@@ -15,6 +16,14 @@ class AdminQuestionService(
     private val questionRepository: QuestionRepository,
     private val criterionRepository: EvaluationCriterionRepository,
 ) {
+    @Transactional(readOnly = true)
+    fun getQuestion(questionId: Long): AdminQuestionDetailResult {
+        val question = questionRepository.findById(questionId)
+            .orElseThrow { QuestionNotFoundException() }
+        val criteria = criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(questionId)
+        return AdminQuestionDetailResult(question, criteria)
+    }
+
     @Transactional
     fun create(request: AdminQuestionRequest): AdminQuestionResponse {
         val question = questionRepository.save(Question(request.title, request.content))

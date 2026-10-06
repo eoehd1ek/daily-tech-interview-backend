@@ -3,6 +3,9 @@ package com.eoehd1ek.tech.question.presentation
 import com.eoehd1ek.tech.question.application.AdminQuestionService
 import com.eoehd1ek.tech.question.application.QuestionService
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.application.result.AdminQuestionDetailResult
+import com.eoehd1ek.tech.question.domain.EvaluationCriterion
+import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
 import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
 import com.eoehd1ek.tech.question.presentation.response.AdminCriterionResponse
@@ -21,6 +24,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.util.ReflectionTestUtils
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -39,6 +43,86 @@ class AdminQuestionControllerTest {
 
     @MockitoBean
     private lateinit var questionService: QuestionService
+
+    @ParameterizedTest
+    @ValueSource(longs = [1L, 9_007_199_254_740_991L])
+    fun `관리자 상세는 안전 정수 ID를 허용하고 질문과 기준을 순서대로 반환한다`(questionId: Long) {
+        // given
+        val question = Question(" 제목 ", "본문\n원문")
+        ReflectionTestUtils.setField(question, "id", questionId)
+        val criteria = listOf(
+            EvaluationCriterion(questionId, "나중 기준", 40, 20),
+            EvaluationCriterion(questionId, "먼저 기준", 60, 1),
+        )
+        criteria.forEachIndexed { index, criterion ->
+            ReflectionTestUtils.setField(criterion, "id", 20L + index)
+        }
+        given(service.getQuestion(questionId)).willReturn(AdminQuestionDetailResult(question, criteria))
+        val expected = AdminQuestionResponse(questionId, question.title, question.content, listOf(
+            AdminCriterionResponse(21L, "먼저 기준", 60, 1),
+            AdminCriterionResponse(20L, "나중 기준", 40, 20),
+        ))
+
+        // when
+        val response = mockMvc.perform(get("/api/admin/questions/$questionId")).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(200)
+        assertThat(MediaType.parseMediaType(requireNotNull(response.contentType))).isEqualTo(MediaType.APPLICATION_JSON)
+        val body = objectMapper.readTree(response.contentAsByteArray)
+        assertThat(body).isEqualTo(objectMapper.readTree(objectMapper.writeValueAsBytes(expected)))
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("id", "title", "content", "criteria")
+        body.get("criteria").forEach {
+            assertThat(it.propertyNames()).containsExactlyInAnyOrder("id", "content", "maxScore", "displayOrder")
+        }
+        verify(service).getQuestion(questionId)
+        verifyNoInteractions(questionService)
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["0", "-1", "9007199254740992", "abc", "1.5", "9223372036854775808"])
+    fun `잘못된 관리자 상세 ID는 Service 호출 없이 요청 오류를 반환한다`(questionId: String) {
+        // given
+        val request = get("/api/admin/questions/$questionId")
+
+        // when
+        val response = mockMvc.perform(request).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(400)
+        assertThat(objectMapper.readTree(response.contentAsByteArray).get("code").asString())
+            .isEqualTo("INVALID_REQUEST")
+        verifyNoInteractions(service, questionService)
+    }
+
+    @Test
+    fun `없는 관리자 상세는 질문 없음 오류를 반환한다`() {
+        // given
+        given(service.getQuestion(10L)).willThrow(QuestionNotFoundException())
+
+        // when
+        val response = mockMvc.perform(get("/api/admin/questions/10")).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(404)
+        assertThat(objectMapper.readTree(response.contentAsByteArray).get("code").asString())
+            .isEqualTo("QUESTION_NOT_FOUND")
+    }
+
+    @Test
+    fun `관리자 상세 조회 실패는 안전한 서버 오류를 반환한다`() {
+        // given
+        given(service.getQuestion(10L)).willThrow(IllegalStateException("private database details"))
+
+        // when
+        val response = mockMvc.perform(get("/api/admin/questions/10")).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(500)
+        assertThat(objectMapper.readTree(response.contentAsByteArray).get("code").asString())
+            .isEqualTo("INTERNAL_SERVER_ERROR")
+        assertThat(response.contentAsString).doesNotContain("private database details")
+    }
 
     @Test
     fun `관리자 목록은 질문 ID와 제목만 JSON 배열로 반환한다`() {
