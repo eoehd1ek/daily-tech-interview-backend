@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alloy is the only backend scraper; Prometheus receives its remote writes.
+scrape_configs: []

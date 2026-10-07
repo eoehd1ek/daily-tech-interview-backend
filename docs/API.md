@@ -1,5 +1,11 @@
 # MVP API Contract
 
+## 내부 메트릭 (메트릭 단계)
+
+Actuator와 Prometheus Registry를 추가하고 기본 관리 포트9091에서 GET /actuator/health와 GET /actuator/prometheus만 제공한다. health는 상태와 health group명만 제공하며 상세 구성요소/DB 접속정보를 노출하지 않는다. prometheus는 Prometheus 텍스트 수집용 엔드포인트로 일반 API JSON 계약과 별개다. 관리 Security chain은 실제 요청이 관리 포트에 도착한 경우의 해당 GET만 익명 수집을 허용하고 다른 경로/메서드는 차단한다. 기존 공개/API 포트에서는 두 경로도 기본 차단이다. 관리포트가 분리되지 않는 설정은 사용하지 않는다.
+
+관리 포트를 호스트/공개 nginx에 노출하지 않고 Docker 내부 monitoring 네트워크로 Alloy가 수집한다. 네트워크 내부에서 인증 없이 수집하므로 해당 네트워크의 접근 권한도 보호한다. HTTP 요청 histogram을 활성화하며 태그 application=tech를 사용한다. 원문 URI/답변/사용자·질문ID를 메트릭 label로 추가하지 않는다. Hikari 메트릭은 앱의 DB 연결 풀 상태이며 PostgreSQL 서버 전체 상태를 의미하지 않는다. Loki/Tempo/트레이스 계측/DB exporter는 이번 단계에 추가하지 않는다.
+
 ## Security 연동 계약
 
 이번 작업으로 이전 무인증 관리자 계약을 대체한다. 공개 API의 JSON/경로/상태는 유지하고 관리자 API는 서버 세션의 ADMIN 역할을 요구한다. GET /api/questions, GET /api/questions/{questionId}, POST /api/questions/{questionId}/evaluation-attempts, GET /api/evaluation-attempts/{attemptId}만 HTTP 메서드와 경로를 명시해 공개한다. 인증 API의 필요한 예외를 제외한 나머지 경로/메서드는 기본 거부한다.

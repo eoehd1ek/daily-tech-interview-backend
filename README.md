@@ -36,5 +36,5 @@ cp .env.example .env
 sudo docker compose up -d
 
 # 백엔드 실행
-./gradlew bootRun
+docker compose -f compose.metrics.yml up -d --build --wait
 ```

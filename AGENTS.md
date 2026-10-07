@@ -119,6 +119,7 @@ LLM 요청은 Spring AI를 통해 처리한다.
 - `createdAt`은 감사 정보이며 제출/평가 시각이나 만료 등 도메인 규칙에 사용하지 않는다. 시간 기반 규칙이 필요해지면 `submittedAt`, `evaluatedAt`처럼 사건을 표현하는 별도 필드를 해당 기능에서 추가한다. 현재는 공통 BaseEntity, 수정 시각, 사용자 감사 정보 및 기존 질문 모델의 감사 필드를 추가하지 않는다.
 - CORS는 config/SecurityConfig의 CorsConfigurationSource에서 /api/**에 적용하고 MVC WebConfig/@CrossOrigin을 중복 추가하지 않는다. 기존 app.cors.allowed-origins/CORS_ALLOWED_ORIGINS의 명시적 Origin만 허용하며 기본 목록은 비어 있다. GET/POST/PUT/OPTIONS, Content-Type/X-CSRF-TOKEN, Location 공개, credentials=true다.
 - Security는 공개 API 네 개와 인증 API의 필요한 메서드만 허용하고 /api/admin/**는 ADMIN 역할, 나머지는 기본 거부한다. 공개 답변 제출 POST만 CSRF 예외이며 로그인/로그아웃/관리자 쓰기는 세션 CSRF를 요구한다. 로그인은 JSON/서버 메모리 세션, 초기 관리자는 환경변수로 최초 생성/BCrypt 저장하고 기존 ADMIN의 비밀번호는 덮어쓰지 않는다. API 계약의 401/403 JSON을 유지하며 formLogin/httpBasic/remember-me는 추가하지 않는다.
+- 메트릭 단계는 Actuator/Prometheus Registry로 관리 포트9091의 health/prometheus GET만 내부 수집에 허용한다. ManagementSecurityConfig는 실제 수신 포트를 검사하며 공개 API 포트의 /actuator를 허용하지 않는다. 관리 포트는 host publish/공개 nginx에 연결하지 않는다. metrics/tag에는 비밀값/답변/ID/원문 URI를 넣지 않는다. 기존 개발 DB Compose와 별도의 compose.metrics.yml을 사용하고 Loki/Tempo는 후속 단계다.
 - 개발 Origin은 http://localhost:5173, 운영은 환경변수로 교체하고 재시작한다. Origin에 경로/끝의 슬래시를 넣지 않고 CORS를 인증 대신 사용하지 않는다. 세션 쿠키는 HttpOnly/SameSite=Lax/Domain 미지정이며 운영 HTTPS에서 SESSION_COOKIE_SECURE=true를 설정한다. 관리자 ID/비밀번호/해시/CSRF/세션을 로그·응답에 노출하지 않는다. 프록시 CORS 중복과 직접 원본 접근을 별도로 확인한다.
 
 # Backend Tests

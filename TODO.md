@@ -294,4 +294,24 @@ displayOrder/preview 검증(2026-10-06): 요청 순서는 프론트 지정 값�
 
 ## 배포 및 후속 확인 사항
 
+## 17. 단일 서버 메트릭 시연
+
+- [x] Actuator/Prometheus Registry 의존성만 추가했다. health/prometheus GET을 관리 포트9091에 분리하고 ManagementSecurityConfig에서 실제 수신 포트와 경로/메서드를 확인한다. 앱 포트의 /actuator는 기존 기본 차단을 유지하며 env/metrics/heapdump/loggers는 노출하지 않는다. 로컬 JVM은 관리 address=127.0.0.1, Compose는 내부 통신용0.0.0.0으로 override하며 관리 포트를 host publish하지 않는다.
+- [x] application=tech 태그와 http.server.requests classic histogram(1ms~180s)을 설정했다. Service 메서드 트레이스/로그 수집/DB exporter는 이번 단계에 추가하지 않았다.
+- [x] 기존 docker-compose.yml(DB 개발용)을 유지하고 별도 compose.metrics.yml에 postgres/backend/alloy/prometheus/grafana 다섯 서비스를 구성했다. 프로젝트 tech-metrics 및 독립 metrics-* 볼륨으로 기존 개발 DB와 분리한다. Java25 multi-stage Dockerfile/nonroot 실행/.env 제외 build context를 추가했다. 기존 CHAT_* 설정을 사용하고 공급자/모델을 임의로 변경하지 않는다.
+- [x] Alloy 15초 scrape→Prometheus /api/v1/write, WAL 영속화, Prometheus remote-write receiver 및7일/2GB retention을 설정했다. 동일 backend를 Prometheus가 중복 scrape하지 않는다. retention.size는 WAL 포함 전체 disk 하드상한이 아니므로 디스크 여유를 별도로 확인한다.
+- [x] Grafana 로그인 필수/회원가입 금지/Prometheus datasource와 Tech Backend Metrics 대시보드9개 패널을 provisioning했다. Backend Scrape Status/CPU/threads/heap/API rate/p95/5xx/Hikari/GC를 제공한다. 실제 요청/GC/오류 발생 전 일부 패널은 No data/NaN일 수 있으며 이를 건강함으로 해석하지 않는다.
+- [x] 전체 `.\gradlew.bat clean build` 통과. 기본 관리포트 Security 테스트와 기존 CoreFlow에서 실제 health/prometheus/공개차단을 확인했다. 최초 health 응답은 Boot의 groups 필드를 포함해 status만 기대한 assertion이 실패했으며 상태UP/상세components 미노출로 수정했다.
+- [x] 실제 Docker 격리 검증: tech-metrics-validation, 임시 DB/관리자/Grafana 계정, LLM 연결 불가능한 테스트키/주소, localhost18080/13000을 사용했다. config --quiet/Java25 Linux image build/up --wait가 통과했고 Grafana database ok/대시보드9개/up=1/JVM heap3series/HTTP count1·bucket80series/Hikari·CPU를 Grafana datasource proxy로 조회했다. 앱 포트 metrics401, 내부 Prometheus ready, 관리/DB/Alloy/Prom 호스트 미공개를 확인했다. LLM API는 호출하지 않았고 실제.env/개발 DB/프론트는 변경하지 않았다. 검증 컨테이너는 down으로 종료했고 volumes는 삭제하지 않았다.
+- [ ] 운영 서버에서 실제 비밀값/리소스/HTTPS/Grafana 접근 제한/영속 데이터 백업과7일 retention을 확인한다. 호스트/컨테이너 CPU·디스크 및 PostgreSQL 서버 메트릭 자체는 node exporter/cAdvisor/PostgreSQL exporter 후속 단계다.
+- [ ] 메트릭 시연 확인 후에만 Loki 로그/Tempo 트레이스 단계를 진행한다. 현재 Compose에는 Loki/Tempo/Java Agent/trace sampling/로그 수집이 없다.
+
+### 메트릭 시연 실행
+
+back/.env의 기존 DB/CHAT_*/ADMIN_LOGIN_ID/ADMIN_PASSWORD와 새 GRAFANA_ADMIN_PASSWORD를 설정한다. 기존.env는 에이전트가 변경하지 않았다. `docker compose -f compose.metrics.yml up -d --build --wait`로 실행하며 backend는 localhost:8080, Grafana는 localhost:3000(환경변수 BACKEND_PORT/GRAFANA_PORT로 변경 가능)이다. Grafana 계정은 GRAFANA_ADMIN_USER(기본admin)/GRAFANA_ADMIN_PASSWORD다. 최초 로그인 비밀번호는 Grafana DB에 저장되므로 기존 Grafana 볼륨에서 env만 바꿔도 비밀번호가 자동 변경되는 것은 아니다. 대시보드는 Tech Backend Metrics, URL /d/tech-spring이다.
+
+메트릭 생성은 질문 목록/상세 GET 또는 기존 프론트 흐름으로 확인한다. 평가 POST는 유료이므로 시연 필요시에만 직접 호출한다. rate/p95 패널에는 수집15초 및 여러 샘플이 필요하다. `docker compose -f compose.metrics.yml ps`와 `logs alloy prometheus backend`로 오류를 확인한다. 중지는 `docker compose -f compose.metrics.yml down`이고 데이터 보존을 위해 -v를 쓰지 않는다. compose.metrics는 기존 개발 DB 데이터 대신 별도 초기 DB를 쓰므로 시연 질문을 관리자 API로 준비해야 한다.
+
+시연 머신과 같은 서버면 localhost로 접속한다. 원격 서버의 Grafana는 SSH 터널/VPN으로 접근하고 공개0.0.0.0 bind로 임의 변경하지 않는다. 예: `ssh -L 3000:127.0.0.1:3000 -L 8080:127.0.0.1:8080 user@server` 후 로컬 URL을 사용한다. 외부 서비스 공개는 기존 nginx/HTTPS/비용 제한 배포 작업에서 별도로 구성한다.
+
 `docs/API.md` 상단 Security 계약과 9절/10.7~10.8을 참조한다. 관리자 입력 길이/개수와 아이디·비밀번호 세션 인증은 구현했다. ADMIN_LOGIN_ID는 매 실행 필요, ADMIN_PASSWORD는 해당 ID의 신규 생성에 필요하며 기존 ADMIN은 변경하지 않는다. 초기 ID를 바꾸면 다른 계정을 생성할 수 있고 비밀번호 변경 기능은 없다. 운영은 SESSION_COOKIE_SECURE=true와 CORS_ALLOWED_ORIGINS=https://tech.eoehd1ek.com을 적용한다. 전체 본문 nginx 제한/413 및 상한(256 KiB 권장)은 배포 작업이다. 익명 평가 기록 보관/공개성과 비용 보호는 별도 확인한다. 백엔드 주소는 https://techapi.eoehd1ek.com이며 실제 배포/브라우저 세션 연결은 미검증이다. 모델/endpoint와 timeout/retry/프론트180초 방향은 변경하지 않는다.

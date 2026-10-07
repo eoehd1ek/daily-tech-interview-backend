@@ -22,6 +22,7 @@ import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.test.context.bean.override.mockito.MockitoBean
@@ -40,6 +41,9 @@ class EvaluationCoreFlowTest {
     @LocalServerPort
     private var port: Int = 0
 
+    @Value("\${local.management.port}")
+    private var managementPort: Int = 0
+
     @Autowired
     private lateinit var questionRepository: QuestionRepository
 
@@ -54,6 +58,33 @@ class EvaluationCoreFlowTest {
 
     @MockitoBean
     private lateinit var model: OpenAiChatModel
+
+    @Test
+    fun `메트릭은 내부 관리 포트에서만 제공하고 공개 API는 기존대로 동작한다`() {
+        // given
+        val client = HttpClient.newHttpClient()
+        val applicationBase = "http://localhost:$port"
+        val managementBase = "http://localhost:$managementPort"
+
+        // when
+        val questions = client.send(HttpRequest.newBuilder(URI.create("$applicationBase/api/questions")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val health = client.send(HttpRequest.newBuilder(URI.create("$managementBase/actuator/health")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val metrics = client.send(HttpRequest.newBuilder(URI.create("$managementBase/actuator/prometheus")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+        val blocked = client.send(HttpRequest.newBuilder(URI.create("$applicationBase/actuator/prometheus")).GET().build(),
+            HttpResponse.BodyHandlers.ofString())
+
+        // then
+        assertThat(questions.statusCode()).isEqualTo(200)
+        assertThat(health.statusCode()).isEqualTo(200)
+        assertThat(objectMapper.readTree(health.body()).get("status").asString()).isEqualTo("UP")
+        assertThat(objectMapper.readTree(health.body()).has("components")).isFalse()
+        assertThat(metrics.statusCode()).isEqualTo(200)
+        assertThat(metrics.body()).contains("jvm_memory_used_bytes", "http_server_requests_seconds_count", "hikaricp_connections")
+        assertThat(blocked.statusCode()).isEqualTo(401)
+    }
 
     @Test
     fun `질문 조회부터 제출 commit과 반복 HTTP 결과 조회까지 외부 LLM 없이 연결한다`() {
