@@ -1,5 +1,7 @@
 # MVP API Contract
 
+> 질문 복수 카테고리 변경은 12절의 확정 계약을 따른다. 카테고리 백엔드는 아직 구현 전이다. 아래 4·5·10절에 추가한 `categories` 필드와 예시는 구현 예정 계약이며, 기존 질문·평가·LLM 로그 기능의 구현/검증 상태와 구분한다. 프론트는 12절 기준 mock으로 병렬 개발한다.
+
 ## 내부 메트릭 (메트릭 단계)
 
 Actuator와 Prometheus Registry를 추가하고 기본 관리 포트9091에서 GET /actuator/health와 GET /actuator/prometheus만 제공한다. health는 상태와 health group명만 제공하며 상세 구성요소/DB 접속정보를 노출하지 않는다. prometheus는 Prometheus 텍스트 수집용 엔드포인트로 일반 API JSON 계약과 별개다. 관리 Security chain은 실제 요청이 관리 포트에 도착한 경우의 해당 GET만 익명 수집을 허용하고 다른 경로/메서드는 차단한다. 기존 공개/API 포트에서는 두 경로도 기본 차단이다. 관리포트가 분리되지 않는 설정은 사용하지 않는다.
@@ -117,7 +119,7 @@ GET /api/questions
 
 Request Body: 없음.
 
-전체 질문의 ID와 제목만 반환한다. 본문, 평가 기준, 배점은 반환하지 않는다. 페이지네이션과 정렬 파라미터는 없으며 목록 순서는 현재 계약에서 보장하지 않는다.
+전체 질문의 ID와 제목을 반환하며, 12절의 카테고리 변경 적용 후에는 `categories`도 필수로 반환한다. 본문, 평가 기준, 배점은 반환하지 않는다. 페이지네이션과 정렬/카테고리 필터 파라미터는 없으며 목록 순서는 현재 계약에서 보장하지 않는다. 프론트가 전체 응답의 `categories`로 필터링한다.
 
 ### 성공 응답: 200 OK
 
@@ -125,20 +127,23 @@ Request Body: 없음.
 [
   {
     "id": 1,
-    "title": "데이터베이스 인덱스"
+    "title": "데이터베이스 인덱스",
+    "categories": ["BACKEND"]
   },
   {
     "id": 2,
-    "title": "MySQL MVCC"
+    "title": "HTTP 통신",
+    "categories": ["FRONTEND", "BACKEND"]
   },
   {
     "id": 3,
-    "title": "Java GC"
+    "title": "미분류 질문",
+    "categories": []
   }
 ]
 ```
 
-배열 원소의 필드: `id: number`, `title: string`.
+배열 원소의 필드: `id: number`, `title: string`, `categories: QuestionCategory[]`. `QuestionCategory`는 12절의 문자열 enum이며 카테고리가 없으면 필드 생략/null 대신 `[]`을 반환한다. `categories`는 구현 예정 추가 필드다.
 
 주요 오류: `500 INTERNAL_SERVER_ERROR`. 질문이 없는 것은 오류가 아니며 `200`과 `[]`을 반환한다.
 
@@ -158,6 +163,7 @@ Request Body: 없음.
 {
   "id": 1,
   "title": "데이터베이스 인덱스",
+  "categories": ["BACKEND"],
   "content": "데이터베이스 인덱스가 무엇인지 설명해주세요."
 }
 ```
@@ -167,6 +173,7 @@ Request Body: 없음.
 | id | number | 질문 ID |
 | title | string | 질문 제목 |
 | content | string | 사용자에게 보여줄 질문 본문 |
+| categories | QuestionCategory[] | 12절의 구현 예정 추가 필드. 중복 없는 카테고리 배열, 미분류는 `[]` |
 
 평가 항목 ID, 평가 기준 설명, 항목별 최대 배점, 평가 기준의 `displayOrder`는 반환하지 않는다.
 
@@ -437,7 +444,7 @@ Service 메서드는 submitAnswer/previewEvaluation으로 명확히 구분한다
 
 ## 10. 관리자 질문 관리 MVP 계약
 
-이 절은 사용자와 결정한 관리자 MVP 계약이다. 관리자 목록·상세·질문 생성·전체 수정과 비저장 평가 테스트는 구현되었다. 공개 API의 경로/응답 필드는 변경하지 않는다. 로그인, 항목별 평가 결과, 초안/발행, 과거 질문 스냅샷, 동시성 제어, 서버 임시저장을 추가하지 않고 생성·수정·비저장 테스트에 집중한다. 프론트엔드 화면/실제 브라우저 연동/배포는 이번 백엔드 구현 범위가 아니며 실제 LLM도 호출하지 않았다.
+이 절은 사용자와 결정한 관리자 MVP 계약이다. 기존 관리자 목록·상세·질문 생성·전체 수정과 비저장 평가 테스트는 구현되었다. 후속 12절은 질문 조회/생성/수정에 `categories`를 추가하는 구현 예정 계약이며 이 절의 관련 예시에도 반영한다. 기존 API 경로와 나머지 필드는 유지한다. 항목별 평가 결과, 초안/발행, 과거 질문 스냅샷, 동시성 제어, 서버 임시저장은 추가하지 않는다. 프론트엔드 화면/실제 브라우저 연동/배포는 이번 백엔드 구현 범위가 아니며 실제 LLM도 호출하지 않았다.
 
 ### 10.1. 화면 및 동작 범위
 
@@ -457,24 +464,27 @@ Service 메서드는 submitAnswer/previewEvaluation으로 명확히 구분한다
 
 | 기능 | Method | Path | 성공 상태 | 본문 | 구현 상태 |
 | --- | --- | --- | --- | --- | --- |
-| 관리자 질문 목록 | GET | `/api/admin/questions` | 200 OK | `{ id, title }[]` | 구현 |
-| 수정용 질문 상세 | GET | `/api/admin/questions/{questionId}` | 200 OK | 질문과 평가 기준 | 구현 |
-| 질문 생성 | POST | `/api/admin/questions` | 201 Created | 저장된 관리자 상세 | 구현 |
-| 질문 전체 수정 | PUT | `/api/admin/questions/{questionId}` | 200 OK | 저장된 관리자 상세 | 구현 |
+| 관리자 질문 목록 | GET | `/api/admin/questions` | 200 OK | `{ id, title, categories }[]` | 기존 구현, categories 추가 예정 |
+| 수정용 질문 상세 | GET | `/api/admin/questions/{questionId}` | 200 OK | 질문과 평가 기준, categories | 기존 구현, categories 추가 예정 |
+| 질문 생성 | POST | `/api/admin/questions` | 201 Created | 저장된 관리자 상세 | 기존 구현, categories 추가 예정 |
+| 질문 전체 수정 | PUT | `/api/admin/questions/{questionId}` | 200 OK | 저장된 관리자 상세 | 기존 구현, categories 추가 예정 |
 | 저장 전 평가 테스트 | POST | `/api/admin/questions/evaluation-preview` | 200 OK | 비저장 평가 결과 | 구현 |
 
 관리자 목록은 전체 질문을 반환하고 빈 목록은 `[]`이다. 순서 보장, Query Parameter, 페이지네이션은 없다. 관리자 상세 조회와 PUT의 경로 ID는 2절의 안전 정수 규칙을 사용하며 없는 질문은 `404 QUESTION_NOT_FOUND`다. PUT은 신규 생성(upsert)을 하지 않는다.
 
-관리자 목록 GET은 `question.presentation.AdminQuestionController`에서 기존 QuestionService/QuestionResponse를 재사용한다. 일반 사용자 QuestionController와 클래스/경로를 분리하며 목록에는 본문/기준을 추가하지 않는다. 정상 목록/빈 배열/안전한 500은 동일 main 패키지의 Controller 테스트로 검증했고 전체 clean build가 통과했다. 실제 브라우저/CORS 연동은 미검증이다.
+관리자 목록 GET은 `question.presentation.AdminQuestionController`에서 기존 QuestionService/QuestionResponse를 재사용한다. 일반 사용자 QuestionController와 클래스/경로를 분리하며 목록에는 본문/기준을 추가하지 않는다. 카테고리 추가 후 공개 목록과 동일하게 `categories`로 프론트 필터링한다. 기존 정상 목록/빈 배열/안전한 500은 Controller 테스트로 검증했고 전체 clean build가 통과했다. 이 과거 검증은 카테고리 기능 검증을 의미하지 않는다. 실제 브라우저/CORS 연동은 미검증이다.
 
 ### 10.3. 질문 생성·수정 요청
 
 POST 생성과 PUT 수정은 같은 전체 본문을 사용한다. 일부 필드만 수정하는 PATCH나 평가 기준 단독 CRUD API는 제공하지 않는다.
 
+아래 `categories`는 12절의 구현 예정 필수 필드다. 생성/수정 모두 선택이 없더라도 `[]`을 전송한다. PUT에서는 기존 연결을 전부 교체하며 `[]`은 전체 해제다. 필드 생략을 기존 값 유지나 기본값으로 해석하지 않는다.
+
 ```json
 {
   "title": "데이터베이스 인덱스",
   "content": "데이터베이스 인덱스가 무엇인지 설명해주세요.",
+  "categories": ["BACKEND"],
   "criteria": [
     { "content": "인덱스의 목적과 기본 개념을 설명한다.", "maxScore": 30, "displayOrder": 1 },
     { "content": "B-Tree 탐색 과정을 설명한다.", "maxScore": 30, "displayOrder": 2 },
@@ -487,12 +497,13 @@ POST 생성과 PUT 수정은 같은 전체 본문을 사용한다. 일부 필드
 | --- | --- | --- |
 | title | string | 필수 비공백 문자열, 최대 200 UTF-16 코드 단위 |
 | content | string | 필수 비공백 문자열, 최대 10,000 UTF-16 코드 단위 |
+| categories | QuestionCategory[] | 구현 예정: 필수 배열, 0~5개, 중복 없는 FRONTEND/BACKEND 문자열만 허용. 누락/null/잘못된 타입·값은 400. 상세 규칙은 12절 |
 | criteria | array | 필수, 1~10개. null/배열 외 타입/null 항목 거부 |
 | criteria[].content | string | 필수 비공백 문자열, 항목당 최대 1,000 UTF-16 코드 단위 |
 | criteria[].maxScore | number | 요청은 정수로 전송. 변환된 Int는 1~100이며 목록 합계 정확히 100 |
 | criteria[].displayOrder | number | 필수 Int. 프론트는 1 이상의 중복 없는 정수를 전송. 서버는 null/누락/변환 실패 및 같은 요청 내 중복 거부 |
 
-관리자 요청은 기본 Jackson 변환을 사용하며 커스텀 역직렬화나 별도 coercion 설정을 추가하지 않는다. 클라이언트는 명세의 문자열/정수 타입으로 전송하되, Jackson이 변환할 수 있는 숫자·boolean의 문자열 변환, 숫자 문자열·소수의 Int 변환을 서버가 엄격히 차단하지는 않는다. 변환할 수 없는 JSON 타입과 DTO 검증 실패는 400이다. 이 정책은 관리자 요청에만 적용하며 기존 일반 사용자 answer의 엄격한 타입 검증은 유지한다.
+기존 관리자 필드는 기본 Jackson 변환을 사용한다. 클라이언트는 명세의 문자열/정수 타입으로 전송하되, 기존 필드에서 Jackson이 변환할 수 있는 숫자·boolean의 문자열 변환, 숫자 문자열·소수의 Int 변환을 서버가 엄격히 차단하지는 않는다. 변환할 수 없는 JSON 타입과 DTO 검증 실패는 400이다. 신규 `categories`는 이 완화 정책의 대상이 아니며 12절대로 배열 및 문자열 enum 타입을 검증한다. 기존 일반 사용자 answer의 엄격한 타입 검증은 유지한다.
 
 변환된 문자열의 누락/null/빈 문자열/공백만 입력과 상한 초과를 거부한다. 길이는 일반 사용자 답변과 동일하게 Kotlin `String.length`와 브라우저 `value.length`/`maxLength`의 UTF-16 기준이다. 공백/줄바꿈도 포함하고 문자열 원문을 trim하거나 자르지 않는다. 질문 기준은 최대 10개이며 변환된 정수 최대 배점 합계는 정확히 100이어야 한다. 프론트와 서버에서 같은 작성 규칙을 검증한다. 필드 길이/개수/배점 등 잘못된 입력은 저장/LLM 호출 전에 `400 INVALID_REQUEST`로 거부하고 오류 본문에 입력 원문이나 비공개 기준을 반사하지 않는다. 전체 HTTP 본문 바이트 제한과 413은 10.7의 인프라 책임이다.
 
@@ -513,6 +524,7 @@ POST의 Location은 구현된 관리자 상세 GET 경로를 가리킨다. 생�
   "id": 1,
   "title": "데이터베이스 인덱스",
   "content": "데이터베이스 인덱스가 무엇인지 설명해주세요.",
+  "categories": ["BACKEND"],
   "criteria": [
     { "id": 11, "content": "인덱스의 목적과 기본 개념을 설명한다.", "maxScore": 30, "displayOrder": 1 },
     { "id": 12, "content": "B-Tree 탐색 과정을 설명한다.", "maxScore": 30, "displayOrder": 2 },
@@ -523,7 +535,7 @@ POST의 Location은 구현된 관리자 상세 GET 경로를 가리킨다. 생�
 
 `id`와 `criteria[].id`는 2절의 ID 규칙, 문자열 필드는 JSON string, `maxScore`와 `displayOrder`는 정수 number다. 기준은 `displayOrder`, 동률 시 ID 오름차순으로 반환한다. 새로 저장한 기준의 순서는 프론트가 지정한 displayOrder 기준이며 요청 배열 위치와 무관하다. 기존 초기 데이터 등은 저장된 순서를 그대로 반환한다. `criteria[].questionId`는 중복 참조이므로 반환하지 않는다.
 
-질문과 기준 저장/교체는 하나의 일반적인 짧은 쓰기 트랜잭션으로 처리하고 실패하면 전체 롤백한다. 동시성 제어는 이번 MVP에서 다루지 않으며 별도 잠금/직렬화/버전 검사/409 충돌 응답을 추가하지 않는다. 후속 저장으로 이전 내용을 덮어쓰는 단순 수정 방식을 사용한다. 실제 병렬 요청의 도착 순서대로 저장됨을 보장하는 기능이나 기준 혼합 방지 보장은 없으며, 동시 수정/조회 문제는 운영 중 필요해지면 개선한다.
+질문과 기준 저장/교체는 하나의 일반적인 짧은 쓰기 트랜잭션으로 처리하고 실패하면 전체 롤백한다. 12절 적용 후 카테고리 연결 저장/교체도 같은 트랜잭션에 포함한다. 동시성 제어는 이번 MVP에서 다루지 않으며 별도 잠금/직렬화/버전 검사/409 충돌 응답을 추가하지 않는다. 후속 저장으로 이전 내용을 덮어쓰는 단순 수정 방식을 사용한다. 실제 병렬 요청의 도착 순서대로 저장됨을 보장하는 기능이나 기준 혼합 방지 보장은 없으며, 동시 수정/조회 문제는 운영 중 필요해지면 개선한다.
 
 공개 질문 목록/상세에는 여전히 `criteria`를 반환하지 않는다. 질문 수정은 기존 EvaluationAttempt의 답변/점수/판정/피드백/생성 시각을 변경하거나 재평가하지 않는다. 기존 결과 GET의 `questionTitle`은 현재 질문 제목이므로 제목 수정 후 달라질 수 있다. 이는 현재 조회 동작을 그대로 사용하는 것으로 별도 기능/마이그레이션이 필요하지 않다. 과거 질문/기준 스냅샷이나 버전 이력은 추가하지 않고 운영 중 필요하면 개선한다.
 
@@ -549,7 +561,7 @@ Content-Type: application/json
 }
 ```
 
-질문/기준은 displayOrder 필수/중복 검증을 포함해 10.3과 동일하게 검증한다. `answer`는 필수 비공백/최대 3,000 UTF-16 문자열이며 관리자 요청과 같은 기본 Jackson 변환을 사용한다. 일반 사용자 답변의 커스텀 역직렬화는 재사용하지 않는다. questionId/기준 DB ID는 받지 않으며 생성/수정 화면 모두 같은 API를 사용한다. 기존 질문 수정 화면에서도 DB의 기존 내용이 아닌 요청한 현재 폼 내용으로 평가한다.
+제목/본문/기준은 displayOrder 필수/중복 검증을 포함해 10.3과 동일하게 검증한다. 12절의 `categories`는 preview 요청·응답에 추가하지 않으며 프론트도 preview 본문에는 넣지 않는다. 카테고리는 탐색용 정보로 평가에 사용하지 않는다. `answer`는 필수 비공백/최대 3,000 UTF-16 문자열이며 관리자 요청과 같은 기본 Jackson 변환을 사용한다. 일반 사용자 답변의 커스텀 역직렬화는 재사용하지 않는다. questionId/기준 DB ID는 받지 않으며 생성/수정 화면 모두 같은 API를 사용한다. 기존 질문 수정 화면에서도 DB의 기존 내용이 아닌 요청한 현재 폼 내용으로 평가한다.
 
 평가 테스트에서도 프론트가 각 기준의 displayOrder를 1 이상의 중복 없는 값으로 전송한다. 배열 위치로 순서를 추측하거나 서버가 displayOrder를 새로 부여하지 않는다.
 
@@ -848,3 +860,66 @@ Path Parameter `logId`는 2절의 안전 정수 규칙을 따른다. **상세는
 - MSW fixture는 정상 성공, STARTED, 응답 없는 MODEL_CALL 실패, 응답·토큰을 가진 RESPONSE_PARSE 실패, 성공했지만 usage 없는 경우, 빈 페이지, 상세 404 및 401/403/500을 포함한다. 상세 예시는 응답 Schema를 포함하지 않는다.
 - 로딩/빈 결과/오류를 구분하고 페이지·필터 변경 시 늦게 도착한 이전 응답이 현재 화면을 덮지 않게 한다. 자동 폴링은 요구하지 않으며 수동 새로고침은 LLM을 호출하지 않는다. 401만 세션 만료 흐름으로 처리하고 403/500/네트워크 오류를 자동 로그아웃으로 해석하지 않는다.
 - 백엔드 검증: `model.call`을 mock한 단위 테스트로 시작 저장 실패 시 미호출, 종료 저장 실패 전파/무재호출, 파싱 실패 원문·usage 보존, 토큰 미제공/0 구분, Schema·인증정보 제외를 확인했다. Controller/Service/Repository 테스트로 DTO·NULL·정렬·필터·페이지·401/403/404/500을 확인했다. 기존 HTTP 통합 테스트를 확장해 Testcontainers PostgreSQL의 시작 기록 commit 이후 호출, LLM 대기 중 외부 트랜잭션 없음, 완료·파싱실패 로그 commit, 평가 ID 연결, 실제 관리자 로그인 후 목록·상세 조회를 검증했다. `.\gradlew.bat clean build`가 통과했다. 실제 공급자/개발·운영 DB/브라우저/프론트 연결은 검증하지 않았으며 프론트 mock과 실제 서버 응답 대조는 후속 작업이다.
+
+## 12. 질문 복수 카테고리 계약 (구현 예정)
+
+사용자와 확정한 프론트 병렬 개발용 계약이다. 이번 작업은 문서 변경만이며 카테고리 모델/마이그레이션/API/테스트/프론트는 아직 구현하지 않았다. 4·5·10절의 `categories` 예시는 이 변경의 적용 이후 형식이다. 이전 절의 기존 빌드·테스트 통과 기록은 카테고리 검증 결과가 아니다.
+
+### 12.1. 분류 및 저장 정책
+
+| 코드 | 화면 표시명 |
+| --- | --- |
+| FRONTEND | 프론트엔드 |
+| BACKEND | 백엔드 |
+
+- 카테고리는 코드에 고정한 enum이며 관리자는 질문에 연결할 값만 선택한다. 카테고리 등록/수정/삭제/목록 API와 정의 테이블은 추가하지 않는다. 프론트도 위 두 코드와 표시명을 사용한다.
+- 질문당 카테고리는 0~5개이며 같은 값을 중복 연결할 수 없다. 현재 허용값이 두 개여서 실제 유효한 선택은 0~2개다. 향후 enum이 늘어나도 질문당 상한 5개는 유지한다. 제한은 전체 카테고리 종류의 최대 개수라는 뜻이 아니다.
+- 신규 연결 테이블 `question_category`에 `id`, `question_id`, `category`를 저장한다. 기존 `question` 테이블과 데이터는 변경하지 않으며 기존 질문에는 자동으로 BACKEND 등을 지정하지 않는다. 새 연결이 없는 질문은 미분류다.
+- `(question_id, category)` 유니크 인덱스로 중복 저장을 방지한다. 최대 개수/허용값은 애플리케이션에서 검증한다. 기존 프로젝트 규칙대로 외래 키/DB enum/CHECK/트리거와 Entity 연관관계 매핑은 추가하지 않는다.
+- 목록은 질문 목록 조회 후 해당 질문 ID들의 연결을 Repository로 한 번에 조회하고 애플리케이션에서 병합한다. 질문별 반복 조회를 하지 않으며 질문이 없으면 연결 조회를 생략한다. 별도 조인 프로젝션/서버 카테고리 필터/페이지네이션은 추가하지 않는다.
+- 카테고리는 순서가 없는 집합이다. 응답 배열은 FRONTEND, BACKEND 순서로 고정하고 요청 배열 순서는 저장·표시 순서로 보존하지 않는다. 질문 목록 자체의 정렬 보장과는 별개다.
+
+### 12.2. 변경되는 API
+
+| Method | Path | 변경 |
+| --- | --- | --- |
+| GET | `/api/questions` | 각 원소가 `{ id, title, categories }` |
+| GET | `/api/questions/{questionId}` | 기존 상세에 `categories` 추가 |
+| GET | `/api/admin/questions` | 공개 목록과 같은 `{ id, title, categories }[]` |
+| GET | `/api/admin/questions/{questionId}` | 기존 관리자 상세에 `categories` 추가 |
+| POST | `/api/admin/questions` | 요청에 categories 필수, 저장된 응답에도 포함 |
+| PUT | `/api/admin/questions/{questionId}` | 요청에 categories 필수, 전체 연결 교체, 응답에도 포함 |
+
+모든 조회/저장 성공 응답의 `categories`는 필수 `QuestionCategory[]`이며 미분류는 `[]`이다. null/필드 생략/단일 문자열/카테고리 ID 객체를 반환하지 않는다. 카테고리 연결이 없다고 질문을 목록에서 제외하거나 상세 404로 처리하지 않는다. 목록은 전체 질문 배열이며 카테고리 Query Parameter는 제공하지 않는다.
+
+경로, 성공 상태, Location, 인증/권한/CSRF/CORS, 제목/본문/기준 검증과 나머지 응답 필드는 유지한다. 일반 답변 제출 요청, 평가 결과 POST/GET 응답, preview 요청·응답, LLM 프롬프트·평가 규칙 및 호출 로그 DTO에는 categories를 추가하지 않는다. 기존 평가/호출 로그를 소급 수정하지 않는다.
+
+### 12.3. 생성·전체 수정 입력 규칙
+
+`categories`는 JSON 배열이며 생성/수정 모두 명시해야 한다. 입력별 처리는 다음과 같다.
+
+| 입력 | 결과 |
+| --- | --- |
+| `[]` | 유효. 생성은 미분류, PUT은 기존 연결 전부 제거 |
+| `["FRONTEND"]` / `["BACKEND"]` | 유효. 해당 카테고리만 연결 |
+| `["FRONTEND", "BACKEND"]` | 유효. 양쪽 연결 |
+| `["BACKEND", "FRONTEND"]` | 유효. 응답은 `["FRONTEND", "BACKEND"]` |
+| 필드 누락 / `null` | `400 INVALID_REQUEST` |
+| 문자열/객체/숫자/boolean 등 배열 외 타입 | `400 INVALID_REQUEST` |
+| null/숫자/boolean/객체/배열인 원소 | `400 INVALID_REQUEST` |
+| `"frontend"`, `" FRONTEND "`, `"COMMON"`, `""` 등 미지원 문자열 | `400 INVALID_REQUEST` |
+| `["FRONTEND", "FRONTEND"]` 등 중복 | `400 INVALID_REQUEST`. 자동 중복 제거로 수용하지 않음 |
+| 원소 6개 이상 | `400 INVALID_REQUEST`. 중복 제거 전 입력 배열 개수 기준 |
+
+enum ordinal 숫자나 숫자 문자열을 카테고리로 변환하지 않는다. 대소문자 변경/trim으로 보정하지 않는다. 잘못된 입력은 DB 저장/LLM 호출 전에 거부하며 오류 본문은 기존 `{ code, message }`만 사용한다. 공개 메시지에 입력 원문을 반사하지 않는다.
+
+POST는 질문/기준/카테고리 연결을 함께 저장한다. PUT은 기존 전체 수정과 동일하게 제목/본문/기준과 카테고리 연결을 하나의 짧은 쓰기 트랜잭션에서 교체하고 실패하면 전체 롤백한다. 연결 행 ID는 내부 값이므로 요청/응답에 노출하지 않는다. 카테고리 누락을 기존 연결 유지나 기본 카테고리 선택으로 해석하는 호환 처리는 추가하지 않는다. 아직 운영 배포 전이므로 프론트와 백엔드를 신규 명시적 계약에 맞춰 적용한다.
+
+### 12.4. 프론트 병렬 작업
+
+- API 타입은 `type QuestionCategory = 'FRONTEND' | 'BACKEND'`와 `categories: QuestionCategory[]`를 사용한다. 공개/관리자 목록·상세·생성/수정 응답과 저장 요청 타입을 모두 갱신한다. 아직 백엔드 미구현이므로 MSW fixture로 개발하며 과거 서버 응답을 새 계약 통과로 간주하지 않는다.
+- 목록의 필터는 기본 '전체', 선택지는 '전체 / 프론트엔드 / 백엔드'로 둔다. '전체'는 모든 질문, 나머지는 `categories.includes(선택한 코드)`로 필터링한다. 양쪽 카테고리가 있으면 각 필터에 모두 나타나고 미분류는 전체에서만 나타난다. ALL/COMMON을 저장 코드로 만들지 않는다.
+- 질문 목록이 비어 있는 상태와 선택한 필터에 해당하는 질문이 없는 상태를 구분한다. 카테고리 변경 시 서버 재요청 없이 받은 전체 목록으로 계산한다. 이후 서버 페이지네이션 도입 시에는 프론트의 부분 목록 필터링을 그대로 유지하지 않고 서버 필터 계약을 별도로 정의한다.
+- 관리자 생성 폼은 선택 없음(`[]`)으로 시작하고 두 카테고리를 독립적으로 선택/해제한다. 기존 질문 수정은 상세의 배열로 초기화한다. 저장 시 빈 선택도 반드시 배열로 전송하고 저장 성공 응답의 정규화된 배열을 새 기준으로 사용한다. 카테고리 편집도 미저장 변경 감지/저장 중 입력 잠금/오류 시 입력 보존에 포함한다.
+- preview 본문은 기존 필드만 전송한다. 저장 DTO 전체를 무조건 펼쳐 보내지 않고 title/content/criteria/answer를 구성한다. 카테고리 선택은 평가에 사용하지 않으며 프롬프트나 결과/LLM 로그의 필수 필드로 가정하지 않는다.
+- fixture/테스트는 미분류·단일·복수 분류, 양쪽 필터 노출, 필터 빈 결과, 상세 직접 진입, 생성 시 `[]` 전송, 기존 연결 수정/전체 해제, 요청 순서와 응답 정렬 차이, 입력 오류 400과 기존 인증 오류를 포함한다. mock 통과와 실제 백엔드/브라우저 연결 검증은 구분한다.
