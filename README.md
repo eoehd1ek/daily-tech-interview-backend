@@ -8,7 +8,7 @@
 기술 면접 준비 활동으로 인강, 스터디 모임 등이 있다.  
 스터디 모임은 함께할 사람을 찾아야 하는 문제가 있다.  
 혼자서는 학습한 내용을 다른 사람에게 설명하는 메타인지 활동을 하기 어렵다.  
-이 프로젝트는 혼자서 기술 면접을 준비하는 사람이 가진 문제를 해결한다.  
+이 프로젝트는 혼자서 기술 면접을 준비하는 사람이 가진 문제를 해결한다.
 
 # 솔루션
 
@@ -20,11 +20,11 @@
 
 # 시작 준비
 
-| 항목 | 비고 |
-| --- | --- |
-| Java 25+ | `java --version`으로 확인 |
+| 항목               | 비고                                                                                                      |
+|--------------------|-----------------------------------------------------------------------------------------------------------|
+| Java 25+           | `java --version`으로 확인                                                                                 |
 | OpenAI 호환 API 키 | [platform.openai.com](https://platform.openai.com) 또는 [openrouter.ai](https://openrouter.ai/) 에서 발급 |
-| Docker | `docker -v`으로 확인 |
+| Docker             | `docker -v`으로 확인                                                                                      |
 
 # 시작하기
 
@@ -32,9 +32,10 @@
 # 프로젝트 루트에서
 cp .env.example .env
 
-# .env 항목 작성 후 
-sudo docker compose up -d
+# .env 항목 작성 후
+sudo docker compose up -d --build --wait  
 
-# 백엔드 실행
-docker compose -f compose.metrics.yml up -d --build --wait
+
+# 또는 개발용 DB만 실행
+sudo docker compose -f compose.dev.yml up -d --wait
 ```
