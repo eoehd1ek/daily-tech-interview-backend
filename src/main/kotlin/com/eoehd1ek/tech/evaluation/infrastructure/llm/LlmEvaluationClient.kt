@@ -1,9 +1,9 @@
 package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
-import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
-import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
-import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
+import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
@@ -26,14 +26,23 @@ class LlmEvaluationClient(
     ): EvaluationProviderResult {
         val data = mapper.writeValueAsString(
             mapOf(
-                "question" to mapOf("title" to title, "content" to content),
+                "question" to mapOf(
+                    "title" to title,
+                    "content" to content
+                ),
                 "criteria" to criteria.map {
-                    mapOf("criterionId" to it.id, "content" to it.content, "maxScore" to it.maxScore)
+                    mapOf(
+                        "criterionId" to it.id,
+                        "content" to it.content,
+                        "maxScore" to it.maxScore
+                    )
                 },
                 "answer" to answer,
             ),
         )
         val options = model.options.mutate()
+            .maxCompletionTokens(2048)
+            .reasoningEffort("low")
             .responseFormat(
                 OpenAiChatModel.ResponseFormat.builder()
                     .type(OpenAiChatModel.ResponseFormat.Type.JSON_SCHEMA)
@@ -63,7 +72,11 @@ class LlmEvaluationClient(
             override fun toString(): String = "EvaluationPrompt[content redacted]"
         }
         return try {
-            val raw = model.call(prompt).result?.output?.text?.takeIf { it.isNotBlank() }
+            val raw = model.call(prompt)
+                .result
+                ?.output
+                ?.text
+                ?.takeIf { it.isNotBlank() }
                 ?: throw LlmEvaluationFailedException()
             parser.parse(raw)
         } catch (_: RuntimeException) {
