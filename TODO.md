@@ -324,3 +324,12 @@ back/.env의 기존 DB/CHAT_*/ADMIN_LOGIN_ID/ADMIN_PASSWORD와 새 GRAFANA_ADMIN
 - [x] 관리자 `GET /api/admin/llm-call-logs` 페이지/기간·상태·용도·모델 필터와 `GET /api/admin/llm-call-logs/{logId}` 상세를 구현했다. 목록은 원문 없는 projection을 사용하고 상세는 모든 로그 필드와 JSON 객체/배열을 반환한다. 기존 세션 ADMIN 권한 및 안전한 오류 계약을 재사용한다.
 - [x] mock 기반 호출 기록/Service/Controller 및 PostgreSQL Repository 테스트, 기존 HTTP Core Flow 확장으로 시작 commit·실패 로그 보존·평가 연결·실제 관리자 로그인 후 조회를 검증했다. `.\gradlew.bat clean build`가 통과했다. 최초 테스트 컴파일의 JsonNode map 충돌과 Mockito matcher의 Kotlin non-null 문제는 수정 후 재검증했다. 실제 LLM 테스트는 비활성화 상태로 실행하지 않았다.
 - [ ] 프론트 관리자 로그 화면과 실제 브라우저 세션/CORS 연결을 확인한다. 프론트 fixture는 `docs/API.md` 11절을 기준으로 한다. 실제 공급자의 usage/추가 metadata 제공 여부와 운영 마이그레이션·백업·영구 보관에 따른 디스크 증가는 별도 확인한다.
+
+## 19. 질문 복수 카테고리
+
+- [x] 고정 enum FRONTEND/BACKEND와 `question_category` 연결 Entity/Repository, Flyway `V4.0.1__create_question_category.sql`을 추가했다. 기존 질문 데이터는 바꾸지 않고 미분류 `[]`로 조회한다. `(question_id, category)` 중복 방지 유니크 인덱스를 사용하며 FK/CHECK/Entity 연관관계/카테고리 관리 API는 추가하지 않았다.
+- [x] 생성·수정에 필수 categories 배열을 받는다. 빈 배열을 허용하고 질문당 최대 5개/중복 금지/정확한 문자열 enum 타입을 검증한다. 누락/null/숫자 ordinal/공백·미지원 값/잘못된 원소 등은 안전한 400이다. PUT은 카테고리 연결도 전체 교체하며 질문·기준과 같은 트랜잭션에 포함한다.
+- [x] 공개·관리자 목록/상세 및 저장 응답에 categories를 제공한다. 목록은 질문 조회 + 연결 일괄 조회 후 애플리케이션에서 병합하고 빈 질문일 때 연결 조회를 생략한다. 카테고리 응답은 FRONTEND/BACKEND 순서이며 서버 필터/페이지네이션은 추가하지 않았다.
+- [x] preview 기준 검증만 작은 공통 함수로 추출하고 기존 preview 입력/응답과 프롬프트/채점/평가 결과/호출 로그는 유지했다. 실제 관리자 HTTP 생성·수정·해제·반복 저장과 별도 공개/관리자 조회, 기존 미분류 질문·preview·평가·로그 회귀를 확인했다.
+- [x] `.\gradlew.bat clean build` 통과: 전체 501개 중 500개 성공, 실제 LLM opt-in 1개 생략. 테스트 컴파일 중 JsonNode.map 충돌을 수정했다. PostgreSQL은 기존 Testcontainers 격리 환경이며 개발·운영 DB나 실제 공급자는 호출하지 않았다. docs/API.md 12절을 구현 상태로 갱신했다.
+- [ ] 프론트 목록의 전체/프론트엔드/백엔드 로컬 필터와 관리자 복수 선택·빈 배열 저장을 실제 서버와 연결한다. 프론트 코드/문서는 이번 백엔드 작업에서 수정하지 않았다.

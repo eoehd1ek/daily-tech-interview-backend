@@ -9,6 +9,7 @@ import com.eoehd1ek.tech.llmcalllog.domain.LlmCallStatus
 import com.eoehd1ek.tech.llmcalllog.infrastructure.persistence.LlmCallLogRepository
 import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 import com.eoehd1ek.tech.question.domain.Question
+import com.eoehd1ek.tech.question.domain.QuestionCategory
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
 import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
 import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
@@ -161,9 +162,16 @@ class EvaluationCoreFlowTest {
 
         // then
         assertThat(list.statusCode()).isEqualTo(200)
-        assertThat(objectMapper.readTree(list.body()).toList().map { it.get("id").asLong() }).contains(questionId)
+        val listedQuestion = objectMapper.readTree(list.body()).toList().single { it.get("id").asLong() == questionId }
+        assertThat(listedQuestion.propertyNames()).containsExactlyInAnyOrder("id", "title", "categories")
+        assertThat(listedQuestion.get("categories").isArray).isTrue()
+        assertThat(listedQuestion.get("categories").toList()).isEmpty()
         assertThat(detail.statusCode()).isEqualTo(200)
-        assertThat(objectMapper.readTree(detail.body()).get("content").asString()).isEqualTo(question.content)
+        val detailBody = objectMapper.readTree(detail.body())
+        assertThat(detailBody.propertyNames()).containsExactlyInAnyOrder("id", "title", "content", "categories")
+        assertThat(detailBody.get("content").asString()).isEqualTo(question.content)
+        assertThat(detailBody.get("categories").isArray).isTrue()
+        assertThat(detailBody.get("categories")).isEqualTo(listedQuestion.get("categories"))
         assertThat(submitted.statusCode()).isEqualTo(201)
         assertThat(submitted.headers().firstValue("Location").orElseThrow()).isEqualTo("/api/evaluation-attempts/$id")
         assertThat(id).isPositive()
@@ -286,6 +294,50 @@ class EvaluationCoreFlowTest {
         val cookies = CookieManager(null, CookiePolicy.ACCEPT_ALL)
         val client = HttpClient.newBuilder().cookieHandler(cookies).build()
         val base = "http://localhost:$port"
+        fun assertStoredQuestion(saved: HttpResponse<String>, expectedCategories: List<String>) {
+            val savedBody = objectMapper.readTree(saved.body())
+            val questionId = savedBody.get("id").asLong()
+            assertThat(savedBody.propertyNames()).containsExactlyInAnyOrder(
+                "id", "title", "content", "criteria", "categories",
+            )
+            assertThat(savedBody.get("categories").isArray).isTrue()
+            assertThat(savedBody.get("categories").toList().map { it.asString() })
+                .containsExactlyElementsOf(expectedCategories)
+            val publicClient = HttpClient.newHttpClient()
+            val publicList = publicClient.send(
+                HttpRequest.newBuilder(URI.create("$base/api/questions")).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            val publicDetail = publicClient.send(
+                HttpRequest.newBuilder(URI.create("$base/api/questions/$questionId")).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            val adminList = client.send(
+                HttpRequest.newBuilder(URI.create("$base/api/admin/questions")).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            val adminDetail = client.send(
+                HttpRequest.newBuilder(URI.create("$base/api/admin/questions/$questionId")).GET().build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            assertThat(publicList.statusCode()).isEqualTo(200)
+            assertThat(publicDetail.statusCode()).isEqualTo(200)
+            assertThat(adminList.statusCode()).isEqualTo(200)
+            assertThat(adminDetail.statusCode()).isEqualTo(200)
+            val listed = objectMapper.readTree(publicList.body()).toList()
+                .single { it.get("id").asLong() == questionId }
+            val detail = objectMapper.readTree(publicDetail.body())
+            assertThat(listed.propertyNames()).containsExactlyInAnyOrder("id", "title", "categories")
+            assertThat(listed.get("title")).isEqualTo(savedBody.get("title"))
+            assertThat(listed.get("categories")).isEqualTo(savedBody.get("categories"))
+            assertThat(detail.propertyNames()).containsExactlyInAnyOrder("id", "title", "content", "categories")
+            assertThat(detail.get("title")).isEqualTo(savedBody.get("title"))
+            assertThat(detail.get("content")).isEqualTo(savedBody.get("content"))
+            assertThat(detail.get("categories")).isEqualTo(savedBody.get("categories"))
+            assertThat(objectMapper.readTree(adminList.body()).toList()
+                .single { it.get("id").asLong() == questionId }).isEqualTo(listed)
+            assertThat(objectMapper.readTree(adminDetail.body())).isEqualTo(savedBody)
+        }
         val initialToken = client.send(
             HttpRequest.newBuilder(URI.create("$base/api/auth/csrf")).GET().build(),
             HttpResponse.BodyHandlers.ofString()
@@ -310,11 +362,14 @@ class EvaluationCoreFlowTest {
         )
         assertThat(me.statusCode()).isEqualTo(200)
         assertThat(objectMapper.readTree(me.body()).get("role").asString()).isEqualTo("ADMIN")
-        val original = AdminQuestionRequest("생성 제목", "생성 본문", listOf(AdminCriterionRequest("기존 기준", 100, 10)))
+        val original = AdminQuestionRequest(
+            "생성 제목", "생성 본문", listOf(AdminCriterionRequest("기존 기준", 100, 10)),
+            listOf(QuestionCategory.BACKEND, QuestionCategory.FRONTEND),
+        )
         val changed = AdminQuestionRequest(
             "수정 제목", "수정 본문", listOf(
                 AdminCriterionRequest("새 둘째 기준", 60, 20), AdminCriterionRequest("새 첫 기준", 40, -5),
-            )
+            ), listOf(QuestionCategory.BACKEND),
         )
         val createRequest = HttpRequest.newBuilder(URI.create("$base/api/admin/questions"))
             .header("Content-Type", "application/json")
@@ -370,6 +425,8 @@ class EvaluationCoreFlowTest {
                 .GET().build(), HttpResponse.BodyHandlers.ofString()
         )
         val created = client.send(createRequest, HttpResponse.BodyHandlers.ofString())
+        assertThat(created.statusCode()).isEqualTo(201)
+        assertStoredQuestion(created, listOf("FRONTEND", "BACKEND"))
         val createdBody = objectMapper.readTree(created.body())
         val questionId = createdBody.get("id").asLong()
         val oldCriterionId = createdBody.get("criteria").get(0).get("id").asLong()
@@ -385,6 +442,8 @@ class EvaluationCoreFlowTest {
                 .PUT(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(changed))).build(),
             HttpResponse.BodyHandlers.ofString()
         )
+        assertThat(updated.statusCode()).isEqualTo(200)
+        assertStoredQuestion(updated, listOf("BACKEND"))
         val detail = client.send(
             HttpRequest.newBuilder(URI.create("$base/api/questions/$questionId")).GET().build(),
             HttpResponse.BodyHandlers.ofString()
@@ -398,10 +457,28 @@ class EvaluationCoreFlowTest {
                 URI.create("$base/api/evaluation-attempts/${attempt.id}")
             ).GET().build(), HttpResponse.BodyHandlers.ofString()
         )
+        // Each PUT replaces criterion IDs, so compare each saved response before the next update.
+        listOf(emptyList(), listOf(QuestionCategory.BACKEND), listOf(QuestionCategory.BACKEND))
+            .forEach { categories ->
+                val saved = client.send(
+                    HttpRequest.newBuilder(URI.create("$base/api/admin/questions/$questionId"))
+                        .header("Content-Type", "application/json")
+                        .header(csrf.get("headerName").asString(), csrf.get("token").asString())
+                        .PUT(
+                            HttpRequest.BodyPublishers.ofString(
+                                objectMapper.writeValueAsString(changed.copy(categories = categories))
+                            )
+                        ).build(), HttpResponse.BodyHandlers.ofString()
+                )
+                assertThat(saved.statusCode()).isEqualTo(200)
+                assertThat(objectMapper.readTree(saved.body()).get("id").asLong()).isEqualTo(questionId)
+                assertStoredQuestion(saved, categories.map { it.name })
+            }
 
         // then
         assertThat(preview.statusCode()).isEqualTo(200)
         assertThat(objectMapper.readTree(preview.body()).get("score").asInt()).isEqualTo(80)
+        assertThat(objectMapper.readTree(preview.body()).has("categories")).isFalse()
         assertThat(logsBody.propertyNames()).containsExactlyInAnyOrder(
             "items",
             "page",
@@ -457,7 +534,7 @@ class EvaluationCoreFlowTest {
         assertThat(criteria.map { it.displayOrder }).containsExactly(-5, 20)
         assertThat(detail.statusCode()).isEqualTo(200)
         val detailBody = objectMapper.readTree(detail.body())
-        assertThat(detailBody.propertyNames()).containsExactlyInAnyOrder("id", "title", "content")
+        assertThat(detailBody.propertyNames()).containsExactlyInAnyOrder("id", "title", "content", "categories")
         assertThat(detailBody.get("title").asString()).isEqualTo(changed.title)
         assertThat(detailBody.get("content").asString()).isEqualTo(changed.content)
         assertThat(list.statusCode()).isEqualTo(200)

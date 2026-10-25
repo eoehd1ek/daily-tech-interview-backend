@@ -4,7 +4,10 @@ import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundExceptio
 import com.eoehd1ek.tech.question.application.result.AdminQuestionDetailResult
 import com.eoehd1ek.tech.question.domain.EvaluationCriterion
 import com.eoehd1ek.tech.question.domain.Question
+import com.eoehd1ek.tech.question.domain.QuestionCategory
+import com.eoehd1ek.tech.question.domain.QuestionCategoryAssignment
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
+import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionCategoryAssignmentRepository
 import com.eoehd1ek.tech.question.infrastructure.persistence.QuestionRepository
 import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
 import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
@@ -13,6 +16,9 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyList
@@ -20,8 +26,10 @@ import org.mockito.BDDMockito.given
 import org.mockito.Captor
 import org.mockito.InjectMocks
 import org.mockito.Mock
+import org.mockito.Mockito.inOrder
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoInteractions
+import org.mockito.Mockito.verifyNoMoreInteractions
 import org.mockito.junit.jupiter.MockitoExtension
 import org.springframework.test.util.ReflectionTestUtils
 import java.util.Optional
@@ -34,6 +42,9 @@ class AdminQuestionServiceTest {
     @Mock
     private lateinit var criterionRepository: EvaluationCriterionRepository
 
+    @Mock
+    private lateinit var categoryRepository: QuestionCategoryAssignmentRepository
+
     @InjectMocks
     private lateinit var service: AdminQuestionService
 
@@ -43,8 +54,12 @@ class AdminQuestionServiceTest {
     @Captor
     private lateinit var criteriaCaptor: ArgumentCaptor<List<EvaluationCriterion>>
 
-    @Test
-    fun `관리자 상세 조회는 질문과 해당 기준을 정렬 조회하여 반환한다`() {
+    @Captor
+    private lateinit var categoriesCaptor: ArgumentCaptor<List<QuestionCategoryAssignment>>
+
+    @ParameterizedTest
+    @MethodSource("categorySelections")
+    fun `관리자 상세 조회는 질문과 기준 및 카테고리를 고정 순서로 반환한다`(categories: List<QuestionCategory>) {
         // given
         val question = Question("제목", "본문")
         ReflectionTestUtils.setField(question, "id", 10L)
@@ -54,18 +69,24 @@ class AdminQuestionServiceTest {
         )
         given(questionRepository.findById(10L)).willReturn(Optional.of(question))
         given(criterionRepository.findAllByQuestionIdOrderByDisplayOrderAscIdAsc(10L)).willReturn(criteria)
+        given(categoryRepository.findAllByQuestionId(10L))
+            .willReturn(categories.map { QuestionCategoryAssignment(10L, it) })
 
         // when
         val result = service.getQuestion(10L)
 
         // then
-        assertThat(result).usingRecursiveComparison().isEqualTo(AdminQuestionDetailResult(question, criteria))
+        val expectedCategories = categories.sortedBy { it.ordinal }
+        assertThat(result).usingRecursiveComparison()
+            .isEqualTo(AdminQuestionDetailResult(question, criteria, expectedCategories))
+        assertThat(result.categories).containsExactlyElementsOf(expectedCategories)
         verify(questionRepository).findById(10L)
         verify(criterionRepository).findAllByQuestionIdOrderByDisplayOrderAscIdAsc(10L)
+        verify(categoryRepository).findAllByQuestionId(10L)
     }
 
     @Test
-    fun `없는 관리자 상세 조회는 기준을 조회하지 않고 질문 없음 예외를 반환한다`() {
+    fun `없는 관리자 상세 조회는 기준과 카테고리를 조회하지 않고 질문 없음 예외를 반환한다`() {
         // given
         given(questionRepository.findById(10L)).willReturn(Optional.empty())
 
@@ -74,15 +95,16 @@ class AdminQuestionServiceTest {
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(QuestionNotFoundException::class.java)
-        verifyNoInteractions(criterionRepository)
+        verifyNoInteractions(criterionRepository, categoryRepository)
     }
 
-    @Test
-    fun `질문 생성은 원문과 지정한 순서를 저장하고 순서대로 응답한다`() {
+    @ParameterizedTest
+    @MethodSource("categorySelections")
+    fun `질문 생성은 원문과 기준 및 선택한 카테고리만 저장하고 고정 순서로 응답한다`(categories: List<QuestionCategory>) {
         // given
         val request = AdminQuestionRequest(" 제목 ", "본문\n원문", listOf(
             AdminCriterionRequest("첫 기준", 40, 20), AdminCriterionRequest("둘째 기준", 60, -5),
-        ))
+        ), categories)
         val question = Question(request.title, request.content)
         ReflectionTestUtils.setField(question, "id", 10L)
         val criteria = listOf(
@@ -94,6 +116,10 @@ class AdminQuestionServiceTest {
         }
         given(questionRepository.save(any(Question::class.java))).willReturn(question)
         given(criterionRepository.saveAll(anyList())).willReturn(criteria)
+        if (categories.isNotEmpty()) {
+            given(categoryRepository.saveAll(anyList<QuestionCategoryAssignment>()))
+                .willReturn(categories.map { QuestionCategoryAssignment(10L, it) })
+        }
 
         // when
         val result = service.create(request)
@@ -104,20 +130,35 @@ class AdminQuestionServiceTest {
         assertThat(questionCaptor.value.content).isEqualTo(request.content)
         verify(criterionRepository).saveAll(criteriaCaptor.capture())
         assertThat(criteriaCaptor.value).usingRecursiveComparison().ignoringFields("id").isEqualTo(criteria)
-        assertThat(result).isEqualTo(AdminQuestionResponse.from(question, criteria))
+        if (categories.isEmpty()) {
+            verifyNoInteractions(categoryRepository)
+        } else {
+            verify(categoryRepository).saveAll(categoriesCaptor.capture())
+            assertThat(categoriesCaptor.value.map { it.questionId to it.category })
+                .containsExactlyInAnyOrderElementsOf(categories.map { 10L to it })
+            verifyNoMoreInteractions(categoryRepository)
+        }
+        val expectedCategories = categories.sortedBy { it.ordinal }
+        assertThat(result).isEqualTo(AdminQuestionResponse.from(question, criteria, expectedCategories))
         assertThat(result.criteria.map { it.displayOrder }).containsExactly(-5, 20)
+        assertThat(result.categories).containsExactlyElementsOf(expectedCategories)
     }
 
-    @Test
-    fun `질문 수정은 ID를 유지하고 제목 본문과 기준 전체를 교체한다`() {
+    @ParameterizedTest
+    @MethodSource("categorySelections")
+    fun `질문 수정은 ID를 유지하고 제목 본문 기준과 카테고리를 전부 교체하거나 해제한다`(categories: List<QuestionCategory>) {
         // given
         val question = Question("이전 제목", "이전 본문")
         ReflectionTestUtils.setField(question, "id", 10L)
-        val request = AdminQuestionRequest("새 제목", "새 본문", listOf(AdminCriterionRequest("새 기준", 100, 0)))
+        val request = AdminQuestionRequest("새 제목", "새 본문", listOf(AdminCriterionRequest("새 기준", 100, 0)), categories)
         val criterion = EvaluationCriterion(10L, "새 기준", 100, 0)
         ReflectionTestUtils.setField(criterion, "id", 30L)
         given(questionRepository.findById(10L)).willReturn(Optional.of(question))
         given(criterionRepository.saveAll(anyList())).willReturn(listOf(criterion))
+        if (categories.isNotEmpty()) {
+            given(categoryRepository.saveAll(anyList<QuestionCategoryAssignment>()))
+                .willReturn(categories.map { QuestionCategoryAssignment(10L, it) })
+        }
 
         // when
         val result = service.update(10L, request)
@@ -130,13 +171,24 @@ class AdminQuestionServiceTest {
         assertThat(question.id).isEqualTo(10L)
         assertThat(question.title).isEqualTo(request.title)
         assertThat(question.content).isEqualTo(request.content)
-        assertThat(result).isEqualTo(AdminQuestionResponse.from(question, listOf(criterion)))
+        val categoryOrder = inOrder(categoryRepository)
+        categoryOrder.verify(categoryRepository).deleteAllByQuestionId(10L)
+        if (categories.isNotEmpty()) {
+            categoryOrder.verify(categoryRepository).saveAll(categoriesCaptor.capture())
+            assertThat(categoriesCaptor.value.map { it.questionId to it.category })
+                .containsExactlyInAnyOrderElementsOf(categories.map { 10L to it })
+        }
+        verifyNoMoreInteractions(categoryRepository)
+        val expectedCategories = categories.sortedBy { it.ordinal }
+        assertThat(result).isEqualTo(AdminQuestionResponse.from(question, listOf(criterion), expectedCategories))
+        assertThat(result.categories).containsExactlyElementsOf(expectedCategories)
     }
 
     @Test
-    fun `없는 질문 수정은 기준을 변경하지 않고 질문 없음 예외를 반환한다`() {
+    fun `없는 질문 수정은 기준과 카테고리를 조회하거나 변경하지 않고 질문 없음 예외를 반환한다`() {
         // given
-        val request = AdminQuestionRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 1)))
+        val request = AdminQuestionRequest("제목", "본문", listOf(AdminCriterionRequest("기준", 100, 1)),
+            listOf(QuestionCategory.BACKEND))
         given(questionRepository.findById(10L)).willReturn(Optional.empty())
 
         // when
@@ -144,6 +196,17 @@ class AdminQuestionServiceTest {
 
         // then
         assertThatThrownBy { action() }.isInstanceOf(QuestionNotFoundException::class.java)
-        verifyNoInteractions(criterionRepository)
+        verifyNoInteractions(criterionRepository, categoryRepository)
+    }
+
+    companion object {
+        @JvmStatic
+        fun categorySelections(): List<Arguments> = listOf(
+            emptyList(),
+            listOf(QuestionCategory.FRONTEND),
+            listOf(QuestionCategory.BACKEND),
+            listOf(QuestionCategory.FRONTEND, QuestionCategory.BACKEND),
+            listOf(QuestionCategory.BACKEND, QuestionCategory.FRONTEND),
+        ).map { Arguments.of(it) }
     }
 }

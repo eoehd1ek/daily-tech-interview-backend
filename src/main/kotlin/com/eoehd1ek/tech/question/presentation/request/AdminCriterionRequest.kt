@@ -16,3 +16,9 @@ data class AdminCriterionRequest(
 
     val displayOrder: Int,
 )
+
+fun List<AdminCriterionRequest?>.hasValidScoreAndOrder(): Boolean {
+    return all { it != null } &&
+            sumOf { it?.maxScore?.toLong() ?: 0L } == 100L &&
+            map { it?.displayOrder }.distinct().size == size
+}

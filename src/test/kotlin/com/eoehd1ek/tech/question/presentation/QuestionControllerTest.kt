@@ -3,6 +3,7 @@ package com.eoehd1ek.tech.question.presentation
 import com.eoehd1ek.tech.config.SecurityConfig
 import com.eoehd1ek.tech.question.application.QuestionService
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
+import com.eoehd1ek.tech.question.domain.QuestionCategory
 import com.eoehd1ek.tech.question.presentation.response.QuestionDetailResponse
 import com.eoehd1ek.tech.question.presentation.response.QuestionResponse
 import org.assertj.core.api.Assertions.assertThat
@@ -38,11 +39,12 @@ class QuestionControllerTest {
     private lateinit var userDetailsService: UserDetailsService
 
     @Test
-    fun `질문 목록 요청은 ID와 제목만 포함한 JSON 배열을 반환한다`() {
+    fun `질문 목록 요청은 ID와 제목 및 필수 카테고리 배열만 반환한다`() {
         // given
         val questions = listOf(
-            QuestionResponse(10L, "첫 번째 질문"),
-            QuestionResponse(20L, "두 번째 질문"),
+            QuestionResponse(10L, "복수 분류 질문", listOf(QuestionCategory.FRONTEND, QuestionCategory.BACKEND)),
+            QuestionResponse(20L, "단일 분류 질문", listOf(QuestionCategory.BACKEND)),
+            QuestionResponse(30L, "미분류 질문", emptyList()),
         )
         given(questionService.getQuestions()).willReturn(questions)
 
@@ -62,9 +64,13 @@ class QuestionControllerTest {
                 .map { it.get("id").asLong() to it.get("title").asString() }).containsExactlyInAnyOrderElementsOf(
             questions.map { it.id to it.title })
         assertThat(body.toList()).allSatisfy { item ->
-            assertThat(item.properties().map { it.key }).containsExactlyInAnyOrder("id", "title")
+            assertThat(item.properties().map { it.key }).containsExactlyInAnyOrder("id", "title", "categories")
             assertThat(item.get("id").isIntegralNumber).isTrue()
             assertThat(item.get("title").isString).isTrue()
+            assertThat(item.get("categories").isArray).isTrue()
+            val expected = questions.single { it.id == item.get("id").asLong() }
+            assertThat(item.get("categories").toList().map { it.asString() })
+                .containsExactlyElementsOf(expected.categories.map { it.name })
         }
         verify(questionService).getQuestions()
     }
@@ -88,9 +94,12 @@ class QuestionControllerTest {
     }
 
     @Test
-    fun `질문 상세 요청은 ID와 제목과 본문만 포함한 JSON 객체를 반환한다`() {
+    fun `질문 상세 요청은 ID와 제목과 본문 및 enum 문자열 카테고리 배열을 반환한다`() {
         // given
-        val question = QuestionDetailResponse(10L, "상세 질문", "상세 질문 본문")
+        val question = QuestionDetailResponse(
+            10L, "상세 질문", "상세 질문 본문",
+            listOf(QuestionCategory.FRONTEND, QuestionCategory.BACKEND)
+        )
         given(questionService.getQuestion(question.id)).willReturn(question)
 
         // when
@@ -102,13 +111,34 @@ class QuestionControllerTest {
             .isEqualTo(MediaType.APPLICATION_JSON)
         val body = objectMapper.readTree(response.contentAsByteArray)
         assertThat(body.isObject).isTrue()
-        assertThat(body.propertyNames()).containsExactlyInAnyOrder("id", "title", "content")
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("id", "title", "content", "categories")
         assertThat(body.get("id").isIntegralNumber).isTrue()
         assertThat(body.get("id").asLong()).isEqualTo(question.id)
         assertThat(body.get("title").isString).isTrue()
         assertThat(body.get("title").asString()).isEqualTo(question.title)
         assertThat(body.get("content").isString).isTrue()
         assertThat(body.get("content").asString()).isEqualTo(question.content)
+        assertThat(body.get("categories").isArray).isTrue()
+        assertThat(body.get("categories").toList().map { it.asString() }).containsExactly("FRONTEND", "BACKEND")
+        verify(questionService).getQuestion(question.id)
+    }
+
+    @Test
+    fun `미분류 상세도 카테고리 필드를 생략하지 않고 빈 배열로 반환한다`() {
+        // given
+        val question = QuestionDetailResponse(10L, "미분류 질문", "질문 본문", emptyList())
+        given(questionService.getQuestion(question.id)).willReturn(question)
+
+        // when
+        val response = mockMvc.perform(get("/api/questions/{questionId}", question.id)).andReturn().response
+
+        // then
+        assertThat(response.status).isEqualTo(200)
+        assertThat(MediaType.parseMediaType(requireNotNull(response.contentType))).isEqualTo(MediaType.APPLICATION_JSON)
+        val body = objectMapper.readTree(response.contentAsByteArray)
+        assertThat(body.propertyNames()).containsExactlyInAnyOrder("id", "title", "content", "categories")
+        assertThat(body.get("categories").isArray).isTrue()
+        assertThat(body.get("categories").toList()).isEmpty()
         verify(questionService).getQuestion(question.id)
     }
 
@@ -160,7 +190,7 @@ class QuestionControllerTest {
     @ValueSource(longs = [1L, 9_007_199_254_740_991L])
     fun `지원 ID 범위의 최솟값과 최댓값은 상세 조회를 허용한다`(questionId: Long) {
         // given
-        val question = QuestionDetailResponse(questionId, "경계값 질문", "질문 본문")
+        val question = QuestionDetailResponse(questionId, "경계값 질문", "질문 본문", emptyList())
         given(questionService.getQuestion(questionId)).willReturn(question)
 
         // when

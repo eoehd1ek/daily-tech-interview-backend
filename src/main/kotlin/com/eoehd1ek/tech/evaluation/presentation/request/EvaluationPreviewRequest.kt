@@ -1,7 +1,7 @@
 package com.eoehd1ek.tech.evaluation.presentation.request
 
 import com.eoehd1ek.tech.question.presentation.request.AdminCriterionRequest
-import com.eoehd1ek.tech.question.presentation.request.AdminQuestionRequest
+import com.eoehd1ek.tech.question.presentation.request.hasValidScoreAndOrder
 import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -27,5 +27,5 @@ data class EvaluationPreviewRequest(
 ) {
     @AssertTrue
     @JsonIgnore
-    fun isValidCriteria(): Boolean = AdminQuestionRequest(title, content, criteria).isValidCriteria()
+    fun isValidCriteria(): Boolean = criteria.hasValidScoreAndOrder()
 }

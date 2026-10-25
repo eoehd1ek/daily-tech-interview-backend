@@ -42,7 +42,7 @@ class SecurityConfigTest {
     @ValueSource(strings = ["http://localhost:5173", "https://frontend.example.com"])
     fun `설정된 Origin의 요청은 해당 Origin과 공개 헤더를 반환한다`(origin: String) {
         // given
-        given(questionService.getQuestions()).willReturn(listOf(QuestionResponse(10L, "테스트 질문")))
+        given(questionService.getQuestions()).willReturn(listOf(QuestionResponse(10L, "테스트 질문", emptyList())))
 
         // when
         val response = mockMvc.perform(get("/api/questions").header(HttpHeaders.ORIGIN, origin))

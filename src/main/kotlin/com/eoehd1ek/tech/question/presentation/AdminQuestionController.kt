@@ -33,7 +33,8 @@ class AdminQuestionController(
         return AdminQuestionResponse
             .from(
                 result.question,
-                result.criteria
+                result.criteria,
+                result.categories,
             )
     }
 
