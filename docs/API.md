@@ -39,7 +39,7 @@ Actuator와 Prometheus Registry를 추가하고 기본 관리 포트9091에서 G
 
 현재 공개 Core Flow는 로그인과 사용자 구별 없이 동작한다. 같은 질문에 여러 번 답변할 수 있으며 성공한 평가 결과를 ID로 다시 조회한다. 관리자 API는 Spring Security의 아이디·비밀번호/서버 세션 인증과 ADMIN 역할을 요구한다. 상단 Security 연동 계약이 이전 무인증 관리자 정책을 대체한다.
 
-1~8절의 공개 Core Flow 계약은 유지한다. 관리자 질문 관리 계약은 10절에 정의하며 관리자 목록·상세·질문 생성·전체 수정·저장 전 평가 테스트와 PUT CORS는 구현되었다. 관리자 기능은 질문/평가 기준 생성·수정과 저장 전 평가 테스트로 한정한다. 로그인 사용자 기록, 사용자 평가 기록 목록, 질문 삭제, 검색/페이지네이션, 일일 제출 제한, 별도의 비동기 작업/메시지 큐/상태 조회 API는 이번 관리자 범위에 포함하지 않는다. 관측 가능성과 배포 파이프라인 구현은 별도 작업이다.
+1~8절의 공개 Core Flow 계약은 유지한다. 관리자 질문 관리 계약은 10절에 정의하며 관리자 목록·상세·질문 생성·전체 수정·저장 전 평가 테스트와 PUT CORS는 구현되었다. 기존 관리자 질문 관리 기능은 질문/평가 기준 생성·수정과 저장 전 평가 테스트로 한정한다. 로그인 사용자 기록, 사용자 평가 기록 목록, 질문 삭제, 질문 검색/페이지네이션, 일일 제출 제한, 별도의 비동기 작업/메시지 큐/사용자용 상태 조회 API는 이번 관리자 질문 관리 범위에 포함하지 않는다. 관리자 LLM 호출 로그의 페이지 조회·상세 조회는 11절에 별도로 정의하며 아직 구현 전인 프론트 병렬 개발용 계약이다. 관측 가능성과 배포 파이프라인 구현은 별도 작업이다.
 
 ## 2. 공통 규칙
 
@@ -56,7 +56,7 @@ Actuator와 Prometheus Registry를 추가하고 기본 관리 포트9091에서 G
 | 성공 응답 | 별도 공통 wrapper 없이 JSON 객체 또는 배열 반환 |
 | 오류 응답 | 아래의 공통 `code`, `message` 객체 반환 |
 
-성공 응답의 정의된 필드는 필수이며 `null`을 반환하지 않는다. 목록이 비어 있으면 `[]`을 반환한다. GET 요청에는 Request Body가 없다. 현재 정의한 API에는 Query Parameter가 없다.
+별도로 명시하지 않은 성공 응답의 정의된 필드는 필수이며 `null`을 반환하지 않는다. 배열 형식 목록이 비어 있으면 `[]`을 반환한다. GET 요청에는 Request Body가 없다. 11절의 LLM 호출 로그 API는 명시한 nullable 필드, Query Parameter 및 페이지 응답 객체를 사용하며, 기존 질문·평가 API의 응답 형식은 변경하지 않는다.
 
 경로 ID가 양의 정수가 아니거나 지원 범위를 벗어나면 `400 INVALID_REQUEST`, 유효한 ID지만 리소스가 없으면 `404`를 반환한다.
 
@@ -607,3 +607,244 @@ GET/저장 API는 LLM을 호출하지 않으므로 502를 사용하지 않는다
 - 라우팅/공통 헤더/공유 API 파일은 한 명의 통합 담당자가 수정한다. 미저장 입력 보호와 저장 후 이동은 프론트 담당 범위이며 백엔드 임시저장 API를 요구하지 않는다. 백엔드 미완료 동안에는 명시적 MSW 응답으로 개발하고 서버 구현 이후 CORS·저장 후 공개 목록 반영·preview 비저장·오래된 응답 무시를 실제 연결 검증한다.
 - 실모델 평가 품질 검증과 Cloudflare/nginx 프록시 제한 확인은 별도 승인/배포 검증이다. mock 통과를 실제 공급자 지원이나 운영 연결 완료로 표시하지 않는다.
 - Spring Security/아이디·비밀번호/초기 계정/세션·CSRF/CORS는 이번 작업에서 구현했다. 일반 사용자 회원가입/계정 관리/비밀번호 변경은 후속 범위로 남긴다.
+
+## 11. 관리자 LLM 호출 로그 계약 (구현 예정)
+
+이 절은 프론트엔드 병렬 개발을 위해 확정한 신규 계약이다. 현재 문서만 갱신했으며 DB 마이그레이션, 호출 기록, 조회 API와 프론트 화면은 아직 구현하지 않았다. 프론트는 아래 응답으로 MSW fixture를 작성할 수 있으며, 실제 서버 연결은 백엔드 구현 이후 검증한다. 기존 API가 이미 로그를 저장하거나 아래 경로가 동작한다고 가정하지 않는다.
+
+### 11.1. 기록 범위 및 기존 계약과의 관계
+
+- `model.call()` 한 번당 `llm_call_log` 한 행을 기록한다. 일반 답변 평가(`ANSWER_EVALUATION`)와 관리자 미리 평가(`ADMIN_PREVIEW`)를 모두 포함한다. 입력 검증/질문 조회 실패처럼 모델 호출 단계에 도달하지 않은 요청은 기록 대상이 아니다.
+- 요청 메시지·옵션을 준비한 뒤 `STARTED` 행을 독립된 짧은 트랜잭션으로 저장하고 commit한 다음 모델을 호출한다. 시작 저장이 실패하면 모델을 호출하지 않고 기존 요청에 안전한 `500 INTERNAL_SERVER_ERROR`를 반환한다. LLM 대기 중 DB 트랜잭션을 유지하지 않으며 종료 시 같은 행을 갱신한다.
+- 호출 결과 저장 실패로 모델을 다시 호출하지 않는다. 프로세스 중단이나 종료 갱신 실패 시 `STARTED`가 남을 수 있으므로 현재 실행 중/미과금/미응답이라고 단정할 수 없다. 이후 평가 검증/평가 기록 저장이 실패해도 이미 저장한 호출 로그를 롤백하지 않는다.
+- 시스템 프롬프트, 질문·평가 기준·답변이 포함된 메시지, 적용 옵션, 응답 텍스트와 확보 가능한 메타데이터·토큰·오류 정보를 저장한다. 응답 JSON Schema 정의는 저장하지 않는다. API 키, 인증 헤더, 세션, CSRF 및 그 외 비밀정보는 어떤 스냅샷에도 포함하지 않는다. 예외 객체를 무조건 직렬화하지 않고 오류 메시지·원인도 비밀정보를 제거한다.
+- 보관 기한 없이 영구 보관한다. 자동 삭제/삭제 API는 추가하지 않는다. 향후 수동 정리는 `createdAt`이 아닌 `startedAt` 기준으로 한다. 금액 계산·단가·예상 비용 필드는 추가하지 않는다.
+- 논리적 호출에 대한 애플리케이션 스냅샷이며 실제 HTTP 원문/상태/전체 헤더를 보장하지 않는다. SDK 재시도별 요청·중간 응답·횟수·사용량 및 게이트웨이 내부 처리 내역은 제공하지 않는다. 토큰 값은 최종 응답에서 확보한 값이며 모든 전송 시도의 과금 총합이 아니다.
+- 10절의 preview 비저장은 질문/평가 기준/`EvaluationAttempt`를 저장하지 않는다는 의미로 유지한다. 이 기능 구현 후에는 미저장 초안·테스트 답변·응답도 호출 로그에 영구 보관된다. 10.1/10.5의 비저장/Repository 미사용 설명과 과거 검증 결과는 호출 로그 구현 이전 상태이며, 로그 기능이 적용되면 preview에도 로그 저장을 위한 DB 쓰기와 DB 오류 가능성이 생긴다. 일반 애플리케이션 로그/메트릭에 원문을 출력하지 않는 정책은 유지한다.
+- 공개 평가 API와 preview의 성공 JSON/HTTP 상태는 변경하지 않는다. 로그 ID나 중간 작업 ID를 해당 응답에 추가하지 않는다. 관리자 로그 조회는 사용자용 비동기 작업/평가 상태 조회 API가 아니다.
+
+### 11.2. 인증 및 API 목록
+
+| 기능 | Method | Path | 성공 상태 | 구현 상태 |
+| --- | --- | --- | --- | --- |
+| 전체 호출 로그의 페이지 조회 | GET | `/api/admin/llm-call-logs` | 200 OK | 구현 예정 |
+| 호출 로그 상세 조회 | GET | `/api/admin/llm-call-logs/{logId}` | 200 OK | 구현 예정 |
+
+두 API 모두 기존 서버 세션과 ADMIN 역할을 요구하며 `withCredentials: true`로 요청한다. GET에는 CSRF 헤더와 Request Body가 필요하지 않다. 익명/만료 세션은 `401 AUTHENTICATION_REQUIRED`, 비관리자는 `403 ACCESS_DENIED`다. CORS 정책은 기존 계약을 재사용한다. 조회는 저장된 로그만 읽고 LLM을 호출하거나 평가 결과를 재계산하지 않는다.
+
+### 11.3. 목록 요청 및 필터
+
+```http
+GET /api/admin/llm-call-logs?page=0&size=20&status=FAILED&startedFrom=2026-10-25T00:00:00Z&startedTo=2026-10-26T00:00:00Z
+```
+
+| Query Parameter | 타입 | 기본값 | 검증 및 의미 |
+| --- | --- | --- | --- |
+| page | integer | 0 | 0부터 시작, 0~2,147,483,646 |
+| size | integer | 20 | 1~100 |
+| startedFrom | string | 필터 없음 | 타임존 오프셋이 있는 ISO 8601 시각, `startedAt >= startedFrom` |
+| startedTo | string | 필터 없음 | 타임존 오프셋이 있는 ISO 8601 시각, `startedAt < startedTo` |
+| status | string | 필터 없음 | `STARTED`, `SUCCEEDED`, `FAILED` 중 하나, 대소문자 구분 |
+| purpose | string | 필터 없음 | `ANSWER_EVALUATION`, `ADMIN_PREVIEW` 중 하나, 대소문자 구분 |
+| model | string | 필터 없음 | `requestedModel` 완전 일치, 비공백 최대 255 UTF-16 코드 단위 |
+
+필터는 AND로 결합한다. 사용하지 않는 파라미터는 빈 문자열 대신 생략한다. 정의한 파라미터의 빈 값/잘못된 타입·범위/지원하지 않는 enum/타임존 없는 시각은 `400 INVALID_REQUEST`다. 기간 양 끝이 있으면 `startedFrom < startedTo`여야 한다. 프론트 날짜 입력은 선택한 표시 타임존에서 날짜 경계를 계산해 오프셋 있는 시각으로 보낸다. 하루 조회의 종료는 다음 날 00:00이며 종료 경계는 포함하지 않는다.
+
+정렬은 `startedAt DESC, id DESC`로 고정하고 정렬 파라미터는 제공하지 않는다. 전체 이력을 한 응답으로 내려주지 않는다. 범위를 벗어난 페이지는 404가 아니라 빈 `items`와 실제 전체 건수를 반환한다. 동시 신규 기록/상태 갱신으로 페이지 사이에 항목이 이동하거나 필터 결과와 전체 건수가 달라질 수 있으며 여러 요청의 동일 스냅샷을 보장하지 않는다.
+
+### 11.4. 목록 성공 응답: 200 OK
+
+```json
+{
+  "items": [
+    {
+      "id": 103,
+      "purpose": "ADMIN_PREVIEW",
+      "status": "STARTED",
+      "provider": "CODEX_LB",
+      "requestedModel": "gpt-6-sol",
+      "responseModel": null,
+      "startedAt": "2026-10-25T13:00:00Z",
+      "completedAt": null,
+      "durationMs": null,
+      "inputTokens": null,
+      "outputTokens": null,
+      "totalTokens": null,
+      "failureStage": null
+    },
+    {
+      "id": 102,
+      "purpose": "ANSWER_EVALUATION",
+      "status": "SUCCEEDED",
+      "provider": "CODEX_LB",
+      "requestedModel": "gpt-6-sol",
+      "responseModel": "gpt-6-sol",
+      "startedAt": "2026-10-25T12:59:00Z",
+      "completedAt": "2026-10-25T12:59:02.500Z",
+      "durationMs": 2480,
+      "inputTokens": 1200,
+      "outputTokens": 300,
+      "totalTokens": 1500,
+      "failureStage": null
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 2,
+  "totalPages": 1
+}
+```
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| items | array | 아래 요약 DTO 목록. 빈 페이지는 `[]` |
+| page | number | 요청한 0 기반 페이지 번호 |
+| size | number | 요청한 페이지 크기, 실제 items 길이와 다를 수 있음 |
+| totalElements | number | 필터에 일치하는 전체 건수 |
+| totalPages | number | 전체 페이지 수. 전체 건수 0이면 0 |
+
+빈 최초 조회는 `{ "items": [], "page": 0, "size": 20, "totalElements": 0, "totalPages": 0 }`다. Spring Data의 내부 Page 직렬화 필드를 그대로 노출하지 않고 이 다섯 필드만 반환한다.
+
+| 요약 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| id | number | 로그 ID, 2절의 안전 정수 규칙 |
+| purpose | string | 호출 용도, 11.6 참조 |
+| status | string | 호출 처리 상태, 11.6 참조 |
+| provider | string | 요청 공급자/게이트웨이 식별명 |
+| requestedModel | string | 요청 모델 |
+| responseModel | string 또는 null | 공급자가 제공한 응답 모델 |
+| startedAt | string | 시작 기록 절차에 진입한 시각, UTC ISO 8601 |
+| completedAt | string 또는 null | 클라이언트 호출·응답 처리 종료 시각, UTC ISO 8601 |
+| durationMs | number 또는 null | `model.call()` 경과 밀리초. SDK 내부 재시도 포함, DB 쓰기·로컬 파싱·후속 평가 처리 제외 |
+| inputTokens | number 또는 null | 최종 응답에서 확보한 입력 토큰 |
+| outputTokens | number 또는 null | 최종 응답에서 확보한 출력 토큰 |
+| totalTokens | number 또는 null | 공급자가 제공한 전체 토큰. 누락 시 서버/프론트에서 합산해 확정 값으로 대체하지 않음 |
+| failureStage | string 또는 null | 실패 단계. 오류 문장 대신 목록에 사용할 짧은 분류 |
+
+요약에는 질문 제목/본문, 답변, 프롬프트, 응답 원문, 오류 메시지, 옵션 및 상세 메타데이터를 포함하지 않는다. 예시 모델·토큰은 fixture용이며 실제 공급자 응답이나 호환성 검증 결과가 아니다.
+
+### 11.5. 상세 성공 응답: 200 OK
+
+```http
+GET /api/admin/llm-call-logs/102
+```
+
+Path Parameter `logId`는 2절의 안전 정수 규칙을 따른다. **상세는 11.4의 요약 필드 전부에 아래 추가 필드를 합친 단일 객체**다. DB Entity나 컬럼명을 직접 직렬화하지 않고 camelCase DTO를 사용한다. 스냅샷이 DB TEXT여도 API에서는 파싱된 JSON 객체/배열로 반환하며, 프론트에서 JSON 문자열을 다시 파싱할 필요가 없다. 단, LLM 응답 텍스트와 메시지의 `content` 자체는 원문 문자열로 유지한다.
+
+| 추가 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| questionId | number 또는 null | 관련 질문 ID. preview는 null이며 현재 질문 존재를 보장하지 않음 |
+| evaluationAttemptId | number 또는 null | 연결이 기록된 평가 ID. preview/미생성/연결 미완료는 null. null만으로 평가 실패를 단정하지 않음 |
+| createdAt | string | JPA Auditing 생성 시각, UTC ISO 8601 |
+| responseId | string 또는 null | 공급자 응답 본문의 ID. HTTP `x-request-id`라는 의미가 아님 |
+| finishReason | string 또는 null | 첫 번째 응답 결과의 종료 사유, 공급자 문자열 그대로 |
+| cachedInputTokens | number 또는 null | 공급자가 제공한 캐시 입력 토큰 |
+| reasoningTokens | number 또는 null | 공급자가 제공한 추론 토큰 |
+| requestMessages | array | 순서를 유지한 `{ role: string, content: string }` 메시지 목록. 현재 역할은 system/user |
+| requestOptions | object | 명시적으로 추출한 적용 옵션. Schema 정의·인증 설정 제외 |
+| responseData | object 또는 null | 확보한 전체 결과 목록·메타데이터·상세 usage의 정리된 스냅샷 |
+| errorData | object 또는 null | 비밀정보를 제거한 오류 정보 |
+
+다음은 모든 요약·상세 필드를 포함한 예시다. 요청 지침/질문/기준/답변과 응답 텍스트는 fixture용 축약 문구이며 실제 기록에서는 원문을 자르지 않는다.
+
+```json
+{
+  "id": 102,
+  "purpose": "ANSWER_EVALUATION",
+  "status": "SUCCEEDED",
+  "provider": "CODEX_LB",
+  "requestedModel": "gpt-6-sol",
+  "responseModel": "gpt-6-sol",
+  "startedAt": "2026-10-25T12:59:00Z",
+  "completedAt": "2026-10-25T12:59:02.500Z",
+  "durationMs": 2480,
+  "inputTokens": 1200,
+  "outputTokens": 300,
+  "totalTokens": 1500,
+  "failureStage": null,
+  "questionId": 1,
+  "evaluationAttemptId": 42,
+  "createdAt": "2026-10-25T12:59:00.005Z",
+  "responseId": "chatcmpl-example",
+  "finishReason": "stop",
+  "cachedInputTokens": 200,
+  "reasoningTokens": 50,
+  "requestMessages": [
+    { "role": "system", "content": "질문과 평가 기준에 따라 답변을 평가하세요." },
+    { "role": "user", "content": "{\"question\":{\"title\":\"인덱스\",\"content\":\"인덱스를 설명하세요.\"},\"criteria\":[{\"criterionId\":11,\"content\":\"조회 이점을 설명한다.\",\"maxScore\":100}],\"answer\":\"조회 성능을 높입니다.\"}" }
+  ],
+  "requestOptions": {
+    "maxCompletionTokens": 2048,
+    "reasoningEffort": "low",
+    "responseFormat": { "type": "json_schema", "strict": true }
+  },
+  "responseData": {
+    "results": [
+      {
+        "index": 0,
+        "text": "{\"criteria\":[{\"criterionId\":11,\"score\":80,\"feedback\":\"조회 이점을 설명했습니다.\"}],\"strengths\":\"목적을 설명했습니다.\",\"weaknesses\":\"구조 설명이 부족합니다.\",\"improvements\":\"탐색 과정을 보완하세요.\"}",
+        "finishReason": "stop",
+        "metadata": {}
+      }
+    ],
+    "metadata": {},
+    "usage": {
+      "promptTokens": 1200,
+      "completionTokens": 300,
+      "totalTokens": 1500,
+      "promptTokensDetails": { "cachedTokens": 200 },
+      "completionTokensDetails": { "reasoningTokens": 50 }
+    }
+  },
+  "errorData": null
+}
+```
+
+스냅샷 내부 계약은 다음과 같다. JSON object의 임의 데이터 값은 `null | boolean | number | string | array | object`가 가능하며 프론트는 공급자별 추가 키를 하드코딩하지 않는 범용 JSON 뷰어를 사용한다.
+
+- `requestOptions`: 객체 자체는 필수다. 예시 옵션명은 기록하는 경우 camelCase를 사용하며 미설정/미제공 옵션은 키를 생략한다. `responseFormat`이 있으면 형식/strict 여부만 기록하고 Schema 본문/정의는 포함하지 않는다. 실제 옵션을 기록할 뿐 예시 값으로 모델 설정을 변경하지 않는다.
+- `responseData`: 응답을 확보하지 못하면 null이다. 객체가 있으면 `results: array`, `metadata: object`, `usage: object | null` 세 필드는 필수다. 결과가 없으면 `results: []`다. usage 객체는 공급자가 제공한 안전한 상세 데이터이며 키와 세부 구조는 공급자/라이브러리에 따라 달라질 수 있다.
+- `responseData.results[]`: `index: number`, `text: string | null`, `finishReason: string | null`, `metadata: object` 네 필드를 제공한다. index는 0 기반 결과 목록 위치다. 응답 텍스트가 잘못된 JSON이어도 수정/삭제하지 않고 문자열로 보존한다. 결과별 metadata에는 확보 가능한 안전한 추가 정보를 담는다.
+- `errorData`: 오류가 없으면 null이다. 객체가 있으면 `type: string`, `message: string | null`, `causes: array`를 제공한다. causes 항목은 `{ type: string, message: string | null }`이며 확보한 원인 순서로 반환한다. 예: `{ "type": "InvalidLlmResponseException", "message": "응답 JSON 파싱 실패", "causes": [] }`. 메시지는 안전하게 정리한 값으로 원본 예외 메시지/스택 트레이스 전체를 보장하지 않는다. 공개 오류 응답의 `{ code, message }`와는 별개의 관리자 진단 데이터다.
+- 이 상세 DTO는 합의한 로그 컬럼의 데이터를 모두 제공하되, JSON 스냅샷을 객체/배열로 변환하고 비밀정보를 배제한다. 내부 DB 구조를 그대로 노출하거나 원본 SDK 객체 전체를 직렬화하는 계약은 아니다.
+
+### 11.6. 상태 및 NULL 의미
+
+| 필드 | 값 | 의미 |
+| --- | --- | --- |
+| purpose | ANSWER_EVALUATION | 일반 사용자 답변 평가 |
+| purpose | ADMIN_PREVIEW | 관리자 미저장 폼 미리 평가 |
+| status | STARTED | 시작 기록이 저장되었고 종료 상태가 아직 기록되지 않음 |
+| status | SUCCEEDED | 모델 응답 수신 및 LLM 클라이언트의 파싱 완료 |
+| status | FAILED | 모델 호출/빈 응답/응답 파싱 단계에서 실패 |
+| failureStage | MODEL_CALL | 모델 호출에서 예외 발생 |
+| failureStage | EMPTY_RESPONSE | 반환 결과에 사용할 수 있는 응답 텍스트 없음 |
+| failureStage | RESPONSE_PARSE | 응답 텍스트 파싱/클라이언트 응답 형식 검증 실패 |
+
+모든 정의된 최상위 필드는 누락하지 않고 반환한다. 표에서 허용한 nullable 필드만 null이 가능하다. `STARTED`에서는 종료 시각/소요 시간/응답/토큰/오류/실패 단계가 null이며, `FAILED`에서는 `failureStage`와 `errorData`를 제공한다. `SUCCEEDED`의 오류/실패 단계는 null이다. 완료 상태는 `completedAt`과 `durationMs`를 제공한다.
+
+토큰 null은 공급자 미제공/확보 불가로, 0과 다르다. 완료 상태에서도 토큰이 null일 수 있고, 파싱 실패 상태에서도 응답과 토큰이 존재할 수 있다. 캐시 입력 토큰은 입력 토큰, 추론 토큰은 출력 토큰의 세부 항목이므로 전체에 다시 더하지 않는다. 응답 없는 실패는 실제 원격 처리/과금이 없었다는 뜻이 아니다.
+
+`SUCCEEDED`는 이후 평가 기준 ID/점수 검증, 점수 계산, 평가 기록 저장까지 성공했다는 의미가 아니다. 해당 후속 단계 실패 때문에 이미 성공한 LLM 호출 상태를 FAILED로 바꾸지 않는다. `STARTED`도 실행 중임을 보장하지 않으며, UI에는 '시작 기록/종료 미확인'처럼 표시한다. 완료 시각과 시작 시각의 차이는 파싱 등 처리 시간을 포함할 수 있어 `durationMs`와 동일하다고 가정하지 않는다.
+
+### 11.7. 오류 응답
+
+| HTTP 상태 | code | 발생 조건 |
+| --- | --- | --- |
+| 400 | INVALID_REQUEST | 잘못된 경로 ID, 페이지/필터/시각/기간 범위 |
+| 401 | AUTHENTICATION_REQUIRED | 비로그인/세션 만료 |
+| 403 | ACCESS_DENIED | ADMIN 권한 없음 |
+| 404 | LLM_CALL_LOG_NOT_FOUND | 유효한 ID에 해당하는 호출 로그 없음 |
+| 500 | INTERNAL_SERVER_ERROR | DB 조회/스냅샷 변환 또는 예상치 못한 내부 오류 |
+
+애플리케이션 오류 본문은 기존 `{ code, message }`다. 예: `{ "code": "LLM_CALL_LOG_NOT_FOUND", "message": "LLM 호출 기록을 찾을 수 없습니다." }`. 목록의 빈 결과는 오류가 아니다. 조회 API 자체는 모델을 호출하지 않으므로 기록의 `status: FAILED`를 HTTP 502로 반환하지 않고 정상 조회 200으로 반환한다. 오류 응답에 로그의 요청·응답·오류 원문을 반사하지 않는다.
+
+### 11.8. 프론트 화면 및 병렬 검증
+
+- 목록 권장 기본 열은 시작 일시, 상태, 용도, 요청 모델, 입력/출력/전체 토큰, 소요 시간, 상세 진입이다. 로그 ID/공급자/실패 단계는 보조 열이나 툴팁으로 제공할 수 있다. 긴 원문을 목록에 넣지 않고 모든 기록은 서버 페이지네이션으로 탐색한다. 좁은 화면은 열을 줄이거나 가로 스크롤/요약 카드로 제공한다.
+- 상세는 기본 정보·시간/연결 ID, 토큰, 요청 메시지, 요청 옵션, 응답 데이터, 오류 정보 구역으로 나눈다. 시스템/사용자 메시지는 역할별로 구분한다. user content의 JSON 포맷팅은 선택 사항이며 파싱 실패 시에도 문자열 원문을 표시한다. 원문은 접기/펼치기와 줄바꿈 가능한 텍스트/코드 블록으로 표시한다.
+- 로그 원문과 metadata/error 메시지는 신뢰할 수 없는 외부 입력이다. HTML 실행이나 raw HTML 삽입을 하지 않고 Markdown도 실행하지 않는 텍스트로 렌더링한다. 인증된 상세 화면 외 콘솔/분석 도구/브라우저 영구 저장소로 원문을 복제하지 않는다.
+- 시각은 API의 UTC 값을 선택한 사용자 타임존으로 포맷하고 타임존을 명시한다. 토큰 null은 '미확인', 시각/연결 ID 등 비적용 값은 '-'로 표시한다. 토큰 0은 '0'으로 표시하고 NULL을 합산하거나 0으로 보정하지 않는다. 금액/예상 비용 열은 만들지 않는다.
+- MSW fixture는 정상 성공, STARTED, 응답 없는 MODEL_CALL 실패, 응답·토큰을 가진 RESPONSE_PARSE 실패, 성공했지만 usage 없는 경우, 빈 페이지, 상세 404 및 401/403/500을 포함한다. 상세 예시는 응답 Schema를 포함하지 않는다.
+- 로딩/빈 결과/오류를 구분하고 페이지·필터 변경 시 늦게 도착한 이전 응답이 현재 화면을 덮지 않게 한다. 자동 폴링은 요구하지 않으며 수동 새로고침은 LLM을 호출하지 않는다. 401만 세션 만료 흐름으로 처리하고 403/500/네트워크 오류를 자동 로그아웃으로 해석하지 않는다.
+- 현재 문서 변경만으로 실제 DB 저장/권한/페이지 조회/브라우저 연동이 검증된 것은 아니다. 백엔드 구현 시 이 계약의 DTO·NULL·정렬·필터·안전한 스냅샷을 테스트하고 프론트 mock과 실제 응답을 대조한다.
