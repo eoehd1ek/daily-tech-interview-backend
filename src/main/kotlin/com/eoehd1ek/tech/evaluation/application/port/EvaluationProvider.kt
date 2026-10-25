@@ -1,7 +1,8 @@
 package com.eoehd1ek.tech.evaluation.application.port
 
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
-import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCallContext
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCallResult
 
 interface EvaluationProvider {
     fun evaluate(
@@ -9,5 +10,6 @@ interface EvaluationProvider {
         content: String,
         criteria: List<EvaluationCriterionSpec>,
         answer: String,
-    ): EvaluationProviderResult
+        context: EvaluationCallContext,
+    ): EvaluationCallResult
 }

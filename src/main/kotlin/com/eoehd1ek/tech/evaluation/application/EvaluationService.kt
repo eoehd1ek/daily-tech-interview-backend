@@ -1,5 +1,6 @@
 package com.eoehd1ek.tech.evaluation.application
 
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCallContext
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
 import com.eoehd1ek.tech.evaluation.application.result.EvaluatedAnswerResult
@@ -9,6 +10,8 @@ import com.eoehd1ek.tech.evaluation.domain.EvaluationAttempt
 import com.eoehd1ek.tech.evaluation.domain.EvaluationResult
 import com.eoehd1ek.tech.evaluation.domain.exception.EvaluationAttemptNotFoundException
 import com.eoehd1ek.tech.evaluation.infrastructure.persistence.EvaluationAttemptRepository
+import com.eoehd1ek.tech.llmcalllog.application.LlmCallLogWriter
+import com.eoehd1ek.tech.llmcalllog.domain.LlmCallPurpose
 import com.eoehd1ek.tech.question.application.exception.QuestionNotFoundException
 import com.eoehd1ek.tech.question.domain.Question
 import com.eoehd1ek.tech.question.infrastructure.persistence.EvaluationCriterionRepository
@@ -23,6 +26,7 @@ class EvaluationService(
     private val evaluationProvider: EvaluationProvider,
     private val validator: EvaluationProviderResultValidator,
     private val attemptRepository: EvaluationAttemptRepository,
+    private val callLogWriter: LlmCallLogWriter,
 ) {
 
     fun submitAnswer(questionId: Long, answer: String): EvaluationAttemptResult {
@@ -34,18 +38,21 @@ class EvaluationService(
             content = question.content,
             criteria = criteria,
             answer = answer,
+            context = EvaluationCallContext(LlmCallPurpose.ANSWER_EVALUATION, questionId),
         )
 
         val attempt = saveAttempt(
             questionId = questionId,
             answer = answer,
-            evaluation = evaluation
+            evaluation = evaluation.result
         )
 
-        return EvaluationAttemptResult.from(
+        val result = EvaluationAttemptResult.from(
             attempt,
             question.title
         )
+        callLogWriter.linkEvaluationAttempt(evaluation.callLogId, result.id)
+        return result
     }
 
     fun previewEvaluation(
@@ -59,7 +66,8 @@ class EvaluationService(
             content = content,
             criteria = criteria,
             answer = answer,
-        )
+            context = EvaluationCallContext(LlmCallPurpose.ADMIN_PREVIEW, null),
+        ).result
 
     @Transactional(readOnly = true)
     fun getAttempt(attemptId: Long): EvaluationAttemptResult {
@@ -77,33 +85,42 @@ class EvaluationService(
         content: String,
         criteria: List<EvaluationCriterionSpec>,
         answer: String,
-    ): EvaluatedAnswerResult {
-        val providerResult = evaluationProvider.evaluate(
+        context: EvaluationCallContext,
+    ): EvaluationOutcome {
+        val call = evaluationProvider.evaluate(
             title = title,
             content = content,
             criteria = criteria,
             answer = answer,
+            context = context,
         )
+        val providerResult = call.evaluation
 
         validator.validate(providerResult, criteria)
 
         val score = providerResult.criteria.sumOf { it.score }
 
-        return EvaluatedAnswerResult(
+        val result = EvaluatedAnswerResult(
             score = score,
             result = EvaluationResult.fromScore(score),
             strengths = providerResult.strengths,
             weaknesses = providerResult.weaknesses,
             improvements = providerResult.improvements,
         )
+        return EvaluationOutcome(result, call.callLogId)
     }
+
+    private data class EvaluationOutcome(
+        val result: EvaluatedAnswerResult,
+        val callLogId: Long
+    )
 
     private fun saveAttempt(
         questionId: Long,
         answer: String,
         evaluation: EvaluatedAnswerResult,
-    ): EvaluationAttempt =
-        attemptRepository.save(
+    ): EvaluationAttempt {
+        return attemptRepository.save(
             EvaluationAttempt(
                 questionId = questionId,
                 answer = answer,
@@ -114,7 +131,7 @@ class EvaluationService(
                 improvements = evaluation.improvements,
             )
         )
-
+    }
 
     private fun findQuestion(questionId: Long): Question =
         questionRepository.findById(questionId)

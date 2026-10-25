@@ -21,18 +21,17 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RestController
 import tools.jackson.databind.ObjectMapper
 
-@WebMvcTest(controllers = [AuthController::class, AuthSecurityTest.TestEndpoints::class], properties = [
-    "app.cors.allowed-origins[0]=http://localhost:5173",
-])
+@WebMvcTest(
+    controllers = [AuthController::class, AuthSecurityTest.TestEndpoints::class],
+    properties = ["app.cors.allowed-origins[0]=http://localhost:5173"]
+)
 @Import(SecurityConfig::class, AuthSecurityTest.TestEndpoints::class)
 class AuthSecurityTest {
     @Autowired
@@ -59,18 +58,24 @@ class AuthSecurityTest {
         val csrf = mapper.readTree(initial.response.contentAsByteArray)
 
         // when
-        val login = mvc.perform(post("/api/auth/login").session(session)
-            .header(csrf.get("headerName").asString(), csrf.get("token").asString())
-            .contentType(MediaType.APPLICATION_JSON)
-            .content("""{"loginId":"admin","password":"test-password"}""")).andReturn()
+        val login = mvc.perform(
+            post("/api/auth/login").session(session)
+                .header(csrf.get("headerName").asString(), csrf.get("token").asString())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"loginId":"admin","password":"test-password"}""")
+        ).andReturn()
         val current = mvc.perform(get("/api/auth/me").session(session)).andReturn().response
         val authorized = mvc.perform(get("/api/admin/questions").session(session)).andReturn().response
         val refreshed = mvc.perform(get("/api/auth/csrf").session(session)).andReturn().response
         val freshToken = mapper.readTree(refreshed.contentAsByteArray)
-        val oldToken = mvc.perform(post("/api/admin/questions").session(session)
-            .header("X-CSRF-TOKEN", csrf.get("token").asString())).andReturn().response
-        val logout = mvc.perform(post("/api/auth/logout").session(session)
-            .header(freshToken.get("headerName").asString(), freshToken.get("token").asString())).andReturn().response
+        val oldToken = mvc.perform(
+            post("/api/admin/questions").session(session)
+                .header("X-CSRF-TOKEN", csrf.get("token").asString())
+        ).andReturn().response
+        val logout = mvc.perform(
+            post("/api/auth/logout").session(session)
+                .header(freshToken.get("headerName").asString(), freshToken.get("token").asString())
+        ).andReturn().response
         val afterLogout = mvc.perform(get("/api/auth/me")).andReturn().response
 
         // then
@@ -107,9 +112,11 @@ class AuthSecurityTest {
         }
 
         // when
-        val result = mvc.perform(post("/api/auth/login").with(csrf())
-            .contentType(MediaType.APPLICATION_JSON)
-            .content("""{"loginId":"$loginId","password":"wrong"}""")).andReturn().response
+        val result = mvc.perform(
+            post("/api/auth/login").with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"loginId":"$loginId","password":"wrong"}""")
+        ).andReturn().response
 
         // then
         assertThat(result.status).isEqualTo(401)
@@ -118,7 +125,14 @@ class AuthSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["{}", "{", "{\"loginId\":\" \",\"password\":\"x\"}", "{\"loginId\":\"admin\",\"password\":\"\"}"])
+    @ValueSource(
+        strings = [
+            "{}",
+            "{",
+            "{\"loginId\":\" \",\"password\":\"x\"}",
+            "{\"loginId\":\"admin\",\"password\":\"\"}"
+        ]
+    )
     fun `잘못된 로그인 본문은 요청 오류다`(body: String) {
         // given
         val request = post("/api/auth/login").with(csrf()).contentType(MediaType.APPLICATION_JSON).content(body)
@@ -134,8 +148,12 @@ class AuthSecurityTest {
     @Test
     fun `일반 사용자 API 네 개는 인증과 CSRF 없이 접근한다`() {
         // given
-        val requests = listOf(get("/api/questions"), get("/api/questions/1"),
-            post("/api/questions/1/evaluation-attempts"), get("/api/evaluation-attempts/1"))
+        val requests = listOf(
+            get("/api/questions"),
+            get("/api/questions/1"),
+            post("/api/questions/1/evaluation-attempts"),
+            get("/api/evaluation-attempts/1")
+        )
 
         // when
         val statuses = requests.map { mvc.perform(it).andReturn().response.status }
@@ -147,13 +165,22 @@ class AuthSecurityTest {
     @Test
     fun `관리자 모든 작업은 비인증을 거부하고 USER를 거부하며 ADMIN을 허용한다`() {
         // given
-        val requests = listOf(get("/api/admin/questions"), get("/api/admin/questions/1"),
-            post("/api/admin/questions"), put("/api/admin/questions/1"), post("/api/admin/questions/evaluation-preview"))
+        val requests = listOf(
+            get("/api/admin/questions"),
+            get("/api/admin/questions/1"),
+            post("/api/admin/questions"),
+            put("/api/admin/questions/1"),
+            post("/api/admin/questions/evaluation-preview"),
+            get("/api/admin/llm-call-logs"),
+            get("/api/admin/llm-call-logs/1")
+        )
 
         // when
         val anonymous = requests.map { mvc.perform(it.with(csrf())).andReturn().response.status }
-        val nonAdmin = requests.map { mvc.perform(it.with(csrf()).with(user("user").roles("USER"))).andReturn().response.status }
-        val admin = requests.map { mvc.perform(it.with(csrf()).with(user("admin").roles("ADMIN"))).andReturn().response.status }
+        val nonAdmin =
+            requests.map { mvc.perform(it.with(csrf()).with(user("user").roles("USER"))).andReturn().response.status }
+        val admin =
+            requests.map { mvc.perform(it.with(csrf()).with(user("admin").roles("ADMIN"))).andReturn().response.status }
 
         // then
         assertThat(anonymous).containsOnly(401)
@@ -164,8 +191,13 @@ class AuthSecurityTest {
     @Test
     fun `관리자 로그인 로그아웃 쓰기에 CSRF가 없으면 거부한다`() {
         // given
-        val requests = listOf(post("/api/auth/login"), post("/api/auth/logout"),
-            post("/api/admin/questions"), put("/api/admin/questions/1"), post("/api/admin/questions/evaluation-preview"))
+        val requests = listOf(
+            post("/api/auth/login"),
+            post("/api/auth/logout"),
+            post("/api/admin/questions"),
+            put("/api/admin/questions/1"),
+            post("/api/admin/questions/evaluation-preview")
+        )
 
         // when
         val responses = requests.map { mvc.perform(it.with(user("admin").roles("ADMIN"))).andReturn().response }
@@ -183,7 +215,8 @@ class AuthSecurityTest {
         val requests = listOf(post("/api/questions"), get("/api/private"), get("/login"))
 
         // when
-        val responses = requests.map { mvc.perform(it.with(csrf()).with(user("admin").roles("ADMIN"))).andReturn().response }
+        val responses =
+            requests.map { mvc.perform(it.with(csrf()).with(user("admin").roles("ADMIN"))).andReturn().response }
 
         // then
         responses.forEach {
@@ -207,18 +240,33 @@ class AuthSecurityTest {
         responses.forEach {
             assertThat(it.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN)).isEqualTo("http://localhost:5173")
             assertThat(it.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS)).isEqualTo("true")
-            assertThat(mapper.readTree(it.contentAsByteArray).propertyNames()).containsExactlyInAnyOrder("code", "message")
+            assertThat(mapper.readTree(it.contentAsByteArray).propertyNames()).containsExactlyInAnyOrder(
+                "code",
+                "message"
+            )
         }
     }
 
     @RestController
     class TestEndpoints {
-        @GetMapping("/api/questions", "/api/questions/{id}", "/api/evaluation-attempts/{id}",
-            "/api/admin/questions", "/api/admin/questions/{id}", "/api/private")
+        @GetMapping(
+            "/api/questions",
+            "/api/questions/{id}",
+            "/api/evaluation-attempts/{id}",
+            "/api/admin/questions",
+            "/api/admin/questions/{id}",
+            "/api/private",
+            "/api/admin/llm-call-logs",
+            "/api/admin/llm-call-logs/{id}"
+        )
         fun get(): String = "ok"
 
-        @PostMapping("/api/questions", "/api/questions/{id}/evaluation-attempts", "/api/admin/questions",
-            "/api/admin/questions/evaluation-preview")
+        @PostMapping(
+            "/api/questions",
+            "/api/questions/{id}/evaluation-attempts",
+            "/api/admin/questions",
+            "/api/admin/questions/evaluation-preview"
+        )
         fun post(): String = "ok"
 
         @PutMapping("/api/admin/questions/{id}")

@@ -1,13 +1,21 @@
 package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCallContext
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.application.validation.EvaluationProviderResultValidator
+import com.eoehd1ek.tech.llmcalllog.application.LlmCallLogWriter
+import com.eoehd1ek.tech.llmcalllog.application.model.StartLlmCallLog
+import com.eoehd1ek.tech.llmcalllog.domain.LlmCallPurpose
 import com.eoehd1ek.tech.question.domain.Question
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable
+import org.mockito.ArgumentMatchers.any
+import org.mockito.BDDMockito.given
+import org.mockito.Mockito.mock
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
+import java.time.Instant
 
 // Opt in only when running this test explicitly; SDK retries may incur additional cost.
 @EnabledIfEnvironmentVariable(named = "RUN_LIVE_LLM_TEST", matches = "true")
@@ -19,13 +27,23 @@ class LlmEvaluationClientLiveTest {
             requireNotNull(System.getenv(name)?.takeIf { it.isNotBlank() }) { "$name is required" }
         }
         val model = OpenAiChatModel.builder()
-            .options(OpenAiChatOptions.builder()
-                .model(settings.getValue("CHAT_MODEL"))
-                .baseUrl(settings.getValue("CHAT_BASE_URL"))
-                .apiKey(settings.getValue("CHAT_API_KEY"))
-                .build())
+            .options(
+                OpenAiChatOptions.builder()
+                    .model(settings.getValue("CHAT_MODEL"))
+                    .baseUrl(settings.getValue("CHAT_BASE_URL"))
+                    .apiKey(settings.getValue("CHAT_API_KEY"))
+                    .build()
+            )
             .build()
-        val client = LlmEvaluationClient(model, LlmEvaluationResponseParser())
+        val writer = mock(LlmCallLogWriter::class.java)
+        given(
+            writer.start(
+                any(StartLlmCallLog::class.java) ?: StartLlmCallLog(
+                    LlmCallPurpose.ADMIN_PREVIEW, null, "test", "test", Instant.EPOCH, "[]", "{}",
+                )
+            )
+        ).willReturn(1L)
+        val client = LlmEvaluationClient(model, LlmEvaluationResponseParser(), writer)
         val question = Question("데이터베이스 인덱스", "인덱스의 목적과 탐색 원리, 장단점을 설명해주세요.")
         val criteria = listOf(
             EvaluationCriterionSpec(101L, "인덱스의 목적과 조회 성능 향상을 설명한다", 30),
@@ -40,7 +58,10 @@ class LlmEvaluationClientLiveTest {
         """.trimIndent()
 
         // when
-        val response = client.evaluate(question.title, question.content, criteria, answer)
+        val response = client.evaluate(
+            question.title, question.content, criteria, answer,
+            EvaluationCallContext(LlmCallPurpose.ADMIN_PREVIEW, null)
+        ).evaluation
 
         // then
         EvaluationProviderResultValidator().validate(response, criteria)

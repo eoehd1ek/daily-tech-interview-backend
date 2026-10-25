@@ -315,3 +315,12 @@ back/.env의 기존 DB/CHAT_*/ADMIN_LOGIN_ID/ADMIN_PASSWORD와 새 GRAFANA_ADMIN
 시연 머신과 같은 서버면 localhost로 접속한다. 원격 서버의 Grafana는 SSH 터널/VPN으로 접근하고 공개0.0.0.0 bind로 임의 변경하지 않는다. 예: `ssh -L 3000:127.0.0.1:3000 -L 8080:127.0.0.1:8080 user@server` 후 로컬 URL을 사용한다. 외부 서비스 공개는 기존 nginx/HTTPS/비용 제한 배포 작업에서 별도로 구성한다.
 
 `docs/API.md` 상단 Security 계약과 9절/10.7~10.8을 참조한다. 관리자 입력 길이/개수와 아이디·비밀번호 세션 인증은 구현했다. ADMIN_LOGIN_ID는 매 실행 필요, ADMIN_PASSWORD는 해당 ID의 신규 생성에 필요하며 기존 ADMIN은 변경하지 않는다. 초기 ID를 바꾸면 다른 계정을 생성할 수 있고 비밀번호 변경 기능은 없다. 운영은 SESSION_COOKIE_SECURE=true와 CORS_ALLOWED_ORIGINS=https://tech.eoehd1ek.com을 적용한다. 전체 본문 nginx 제한/413 및 상한(256 KiB 권장)은 배포 작업이다. 익명 평가 기록 보관/공개성과 비용 보호는 별도 확인한다. 백엔드 주소는 https://techapi.eoehd1ek.com이며 실제 배포/브라우저 세션 연결은 미검증이다. 모델/endpoint와 timeout/retry/프론트180초 방향은 변경하지 않는다.
+
+## 18. LLM 호출 로그 및 관리자 조회
+
+- [x] `model.call()` 한 번당 로그 한 행을 저장한다. 일반 평가/관리자 preview를 구분하고 시작 기록을 별도 트랜잭션으로 commit한 뒤에만 호출한다. 시작 저장 실패는 모델 미호출/안전한 500이며 종료 갱신·평가 연결 DB 오류도 무시하지 않고 전파한다. 로그 DB 오류로 모델을 재호출하지 않는다.
+- [x] Flyway `V4.0.0__create_llm_call_log.sql`과 JPA Auditing Entity/Repository/쓰기 서비스를 추가했다. 시작·종료 시각과 call-only 소요 시간, 요청 메시지·적용 옵션, 응답·usage·안전한 오류 스냅샷을 보관한다. 응답 JSON Schema/인증정보는 제외하고 토큰 누락은 0이 아닌 null로 기록한다. 금액 계산과 자동 삭제는 없으며 영구 보관/향후 startedAt 기준 정리다.
+- [x] 호출 성공/실패와 후속 평가 검증·평가 기록 저장을 구분한다. 파싱 실패의 응답·토큰도 보존하고 성공한 평가 기록 ID를 로그에 연결한다. preview는 질문/평가 기록을 만들지 않지만 초안·테스트 답변·응답을 로그에 보관한다. 과거 단계의 비저장 정책은 완료된 평가 기록에 한정한다.
+- [x] 관리자 `GET /api/admin/llm-call-logs` 페이지/기간·상태·용도·모델 필터와 `GET /api/admin/llm-call-logs/{logId}` 상세를 구현했다. 목록은 원문 없는 projection을 사용하고 상세는 모든 로그 필드와 JSON 객체/배열을 반환한다. 기존 세션 ADMIN 권한 및 안전한 오류 계약을 재사용한다.
+- [x] mock 기반 호출 기록/Service/Controller 및 PostgreSQL Repository 테스트, 기존 HTTP Core Flow 확장으로 시작 commit·실패 로그 보존·평가 연결·실제 관리자 로그인 후 조회를 검증했다. `.\gradlew.bat clean build`가 통과했다. 최초 테스트 컴파일의 JsonNode map 충돌과 Mockito matcher의 Kotlin non-null 문제는 수정 후 재검증했다. 실제 LLM 테스트는 비활성화 상태로 실행하지 않았다.
+- [ ] 프론트 관리자 로그 화면과 실제 브라우저 세션/CORS 연결을 확인한다. 프론트 fixture는 `docs/API.md` 11절을 기준으로 한다. 실제 공급자의 usage/추가 metadata 제공 여부와 운영 마이그레이션·백업·영구 보관에 따른 디스크 증가는 별도 확인한다.

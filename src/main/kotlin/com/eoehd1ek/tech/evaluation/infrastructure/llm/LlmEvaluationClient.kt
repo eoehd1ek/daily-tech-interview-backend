@@ -1,20 +1,28 @@
 package com.eoehd1ek.tech.evaluation.infrastructure.llm
 
 import com.eoehd1ek.tech.evaluation.application.exception.LlmEvaluationFailedException
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCallContext
+import com.eoehd1ek.tech.evaluation.application.model.EvaluationCallResult
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationCriterionSpec
 import com.eoehd1ek.tech.evaluation.application.model.EvaluationProviderResult
 import com.eoehd1ek.tech.evaluation.application.port.EvaluationProvider
+import com.eoehd1ek.tech.llmcalllog.application.LlmCallLogWriter
+import com.eoehd1ek.tech.llmcalllog.application.model.StartLlmCallLog
+import com.eoehd1ek.tech.llmcalllog.domain.LlmCallFailureStage
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.stereotype.Component
 import tools.jackson.databind.json.JsonMapper
+import java.time.Instant
 
 @Component
 class LlmEvaluationClient(
     private val model: OpenAiChatModel,
     private val parser: LlmEvaluationResponseParser,
+    private val callLogWriter: LlmCallLogWriter,
 ) : EvaluationProvider {
     private val mapper = JsonMapper.builder().build()
 
@@ -23,7 +31,8 @@ class LlmEvaluationClient(
         content: String,
         criteria: List<EvaluationCriterionSpec>,
         answer: String,
-    ): EvaluationProviderResult {
+        context: EvaluationCallContext,
+    ): EvaluationCallResult {
         val data = mapper.writeValueAsString(
             mapOf(
                 "question" to mapOf(
@@ -71,17 +80,47 @@ class LlmEvaluationClient(
             // Spring AI may log Prompt when a provider returns no choices.
             override fun toString(): String = "EvaluationPrompt[content redacted]"
         }
-        return try {
-            val raw = model.call(prompt)
-                .result
-                ?.output
-                ?.text
-                ?.takeIf { it.isNotBlank() }
-                ?: throw LlmEvaluationFailedException()
-            parser.parse(raw)
-        } catch (_: RuntimeException) {
+        val callLogId = callLogWriter.start(StartLlmCallLog(
+            purpose = context.purpose,
+            questionId = context.questionId,
+            provider = LlmCallSnapshot.provider(options),
+            requestedModel = options.model,
+            startedAt = Instant.now(),
+            requestMessages = LlmCallSnapshot.requestMessages(prompt),
+            requestOptions = LlmCallSnapshot.requestOptions(options),
+        ))
+        var response: ChatResponse? = null
+        var failure: RuntimeException? = null
+        var failureStage: LlmCallFailureStage? = null
+        val callStarted = System.nanoTime()
+        try {
+            response = model.call(prompt)
+        } catch (exception: RuntimeException) {
+            failure = exception
+            failureStage = LlmCallFailureStage.MODEL_CALL
+        }
+        val durationMs = (System.nanoTime() - callStarted) / 1_000_000
+
+        var evaluation: EvaluationProviderResult? = null
+        if (failureStage == null) {
+            val raw = response?.result?.output?.text
+            if (raw.isNullOrBlank()) {
+                failureStage = LlmCallFailureStage.EMPTY_RESPONSE
+            } else {
+                try {
+                    evaluation = parser.parse(raw)
+                } catch (exception: RuntimeException) {
+                    failure = exception
+                    failureStage = LlmCallFailureStage.RESPONSE_PARSE
+                }
+            }
+        }
+        // Record-first: persistence failures must not become a dependency failure or trigger another call.
+        callLogWriter.complete(callLogId, LlmCallSnapshot.completion(response, durationMs, failureStage, failure))
+        if (failureStage != null) {
             throw LlmEvaluationFailedException()
         }
+        return EvaluationCallResult(checkNotNull(evaluation), callLogId)
     }
 
     companion object {
